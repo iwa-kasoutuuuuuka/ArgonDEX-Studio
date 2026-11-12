@@ -238,6 +238,18 @@ async function test(name, fn) {
     assert.strictEqual(dec1, dec2, 'Expected decompileClassToJava to return memoized _decompiledCache reference');
   });
 
+  await test('18. [Debug Verification] Structured while(cond) Folding & SQLi Parameter Taint Attribution', async () => {
+    const cryptoCls = dex.classes.find(c => c.fullName === 'com.argon.vault.crypto.CryptoEngine');
+    const decCrypto = globalThis.ArgonDex.decompileClassToJava(cryptoCls, arsc);
+    assert(decCrypto.java.includes('while (v0 < arg1) {'), 'Expected loop header branch to fold into while (v0 < arg1)');
+    assert(!decCrypto.java.includes('while (true)'), 'Expected no raw while (true) in computeRollingHash');
+
+    const flows = globalThis.ArgonAdvanced.runTaintAnalysis([dex]);
+    const sqliFlow = flows.find(f => f.vulnerability.includes('CWE-89'));
+    assert(sqliFlow, 'Expected CWE-89 SQLi flow');
+    assert(sqliFlow.source.includes('Method Parameter arg1'), `Expected SQLi source to be Method Parameter arg1, got: ${sqliFlow.source}`);
+  });
+
   console.log('====================================================================');
   console.log(` Results: ${passed} passed, ${failed} failed`);
   console.log('====================================================================');

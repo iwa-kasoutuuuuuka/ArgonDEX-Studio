@@ -208,10 +208,11 @@
                 regTaint.delete(ins.vA);
               }
             }
-            // 3. Const-string (hardcoded secret / SQL query / cleartext HTTP URL)
+            // 3. Const-string (hardcoded secret / cleartext HTTP URL, excluding SQL query strings)
             else if (op === 0x1a || op === 0x1b) {
               const sVal = String(ins.refObj || '');
-              if (/AIza[0-9A-Za-z\-_]{20,}|AKIA[0-9A-Z]{16}|SECRET|PRIVATE_KEY/i.test(sVal)) {
+              const isSqlPrefix = /^\s*(SELECT|INSERT|UPDATE|DELETE|CREATE|DROP)\b/i.test(sVal);
+              if (!isSqlPrefix && /AIza[0-9A-Za-z\-_]{20,}|AKIA[0-9A-Z]{16}|SECRET_KEY|MASTER_KEY|PRIVATE_KEY/i.test(sVal)) {
                 regTaint.set(ins.vA, {
                   sourceLabel: `Hardcoded Credential ("${sVal.slice(0, 28)}...")`,
                   category: 'HARDCODED_SECRET',
@@ -297,7 +298,11 @@
 
               const taintedArgs = (ins.args || []).filter(r => regTaint.has(r));
               if (taintedArgs.length > 0) {
-                const primaryTaint = regTaint.get(taintedArgs[0]);
+                // Prefer newly appended parameter taint (e.g. args[1] in StringBuilder.append) over receiver taint
+                const preferredReg = (ins.args && ins.args.length > 1 && regTaint.has(ins.args[1]))
+                  ? ins.args[1]
+                  : taintedArgs[0];
+                const primaryTaint = regTaint.get(preferredReg);
                 const touchesPropagator =
                   mRef.className === 'java.lang.StringBuilder' ||
                   mRef.className === 'java.lang.String' ||

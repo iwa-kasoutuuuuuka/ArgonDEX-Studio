@@ -94,7 +94,7 @@ python argondex_cli.py decompile ./ArgonVault_v2.4.1_sample.apk --out ./decompil
 リバースエンジニアリングツール自体を攻撃する悪意ある APK（Malicious APK）を想定し、以下の脆弱性対策を実装・自動テスト済みです。
 
 ```bash
-# 全13ステージの機能・セキュリティ自動検証スイートの実行
+# 全18ステージの機能・セキュリティ・構造化デバッグ自動検証スイートの実行
 node tests/test_suite.js
 ```
 
@@ -103,6 +103,59 @@ node tests/test_suite.js
 3. **Zip-Bomb メモリ枯渇防御 (`js/zip_engine.js`)**：RFC 1951 INFLATE 展開器に **256 MB (`MAX_INFLATE_BYTES`)** のハードリミットを実装。
 4. **破損チャンク・不正 LEB128 による無限ループ防止 (`js/axml_arsc_parser.js`, `js/dex_decompiler.js`)**：チャンクサイズ `cSize < 8` やファイル末尾超過を即座に検知して中断するガード、および ULEB128/SLEB128 の5バイト上限チェックを実装。
 5. **正規表現インジェクション防止 & コンストラクタ保護 (`js/advanced_analysis_engine.js`)**：難読化識別子に含まれる正規表現メタ文字を `escapeRegExp()` でエスケープし、コンストラクタ宣言と一般メソッド宣言の置換競合を分離。
+
+---
+
+## Phase 1〜3 高度化アップデート＆構造化デバッグ出力例
+
+### 1. 難読化解除 ＋ `synchronized` 復元 ＋ 暗号化バイト配列の静的 XOR 復号 (`CryptoTokenHelper.java`)
+`com.argon.vault.obf.a` に対するスマート難読化解除、`monitor-enter/exit` からの `synchronized` ブロック復元、および `fill-array-data` + `xor-int/lit8` の静的エミュレーション復号結果：
+
+```java
+// [ArgonDEX Smart Deobfuscator] Renamed class 'com.argon.vault.obf.a' -> 'com.argon.vault.obf.CryptoTokenHelper' (Invokes javax.crypto.Cipher / MessageDigest APIs)
+public final class CryptoTokenHelper /* obf: a */ {
+    private String mString_a;
+    private int mint_b;
+
+    public CryptoTokenHelper() {
+        this.mString_a = "AES/ECB/PKCS5Padding";
+        this.mint_b = 256;
+    }
+
+    public byte[] transformCrypto_a(String arg0) {
+        synchronized (this) {
+            Cipher v0 = Cipher.getInstance(this.mString_a);
+        }
+        return NativeBridge.deriveHardwareKey(arg0, this.mint_b);
+    }
+
+    public int computeInt_b(int arg0, int arg1) {
+        byte[] v0 = new byte[]{ 0x1b, 0x08, 0x1d, 0x15, 0x14, 0x05, 0x11, 0x1f, 0x03, 0x7b } /* 🔓 Decrypted XOR Byte-Array (key=0x5a): "ARGON_KEY!" */;
+        return ((arg0 + arg1) * 31);
+    }
+}
+```
+
+### 2. ループヘッダ条件畳み込み (`while (v0 < arg1)`) と SQLi パラメータ汚染追跡
+- **ループ条件畳み込み (`CryptoEngine.computeRollingHash`)**：ループ先頭の脱出分岐命令 (`if-ge`) を検出し、`while (true) { if (v0 >= arg1) break; ... }` ではなく自然な `while (v0 < arg1) { ... }` へ構造化。
+- **SQL インジェクション汚染源の厳密帰属 (`VaultDatabase.queryVaultSecret`)**：SQL クエリ文字列定数と外部パラメータ (`arg1`) が `StringBuilder.append` で結合される際、外部パラメータ側のテイントを優先伝播し、`Method Parameter arg1 -> SQLiteDatabase.rawQuery (CWE-89)` を正確に検出。
+
+### 3. ARM64 (`.text`) → Pseudo-C 構造化デコンパイル (`native_pseudo_c/libnative-vault.so.c`)
+```c
+// @vaddr 0x00001000
+JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm /* x0 */, void* reserved /* x1 */) {
+    return 0x10006 /* JNI_VERSION_1_6 */;
+}
+
+// @vaddr 0x00001010
+JNIEXPORT uint64_t JNICALL Java_com_argon_vault_NativeBridge_deriveHardwareKey(JNIEnv* env /* x0 */, jobject thiz /* x1 */, uint64_t arg0 /* x2 */, uint64_t arg1 /* x3 */) {
+    uint64_t x19 = env;
+    uint64_t x20 = arg0;
+    uint64_t v_1020 = (x19 ^ x20);
+    uint64_t call_1024 = sub_1034_internal(v_1020, thiz);
+    return call_1024;
+}
+```
 
 ---
 ---
@@ -171,7 +224,7 @@ python argondex_cli.py decompile ./ArgonVault_v2.4.1_sample.apk --out ./decompil
 
 ## Debugging & Self-Vulnerability Hardening Verification
 
-Run the automated 13-stage verification suite:
+Run the automated 18-stage verification suite:
 
 ```bash
 node tests/test_suite.js
@@ -182,6 +235,7 @@ node tests/test_suite.js
 3. **Zip-Bomb Decompression Ceiling (`js/zip_engine.js`)**: RFC 1951 INFLATE enforces a hard `256 MB` (`MAX_INFLATE_BYTES`) allocation ceiling.
 4. **Malformed Binary Chunk & LEB128 Bounds (`js/axml_arsc_parser.js`, `js/dex_decompiler.js`)**: Strict header size guards (`cSize >= 8`, `offset + cSize <= bytes.length`) and 5-byte ULEB128/SLEB128 bounds prevent infinite loops on corrupted or adversarial DEX/AXML/ARSC headers.
 5. **Deobfuscator RegExp Escaping & Constructor Isolation (`js/advanced_analysis_engine.js`)**: Escapes regex metacharacters in obfuscated identifiers and isolates class constructor renaming from method renaming.
+6. **Phase 1–3 Advanced Verification (`tests/test_suite.js` Stages 14–18)**: Verifies `synchronized (this)` recovery, `while (v0 < arg1)` loop header condition folding, `fill-array-data` + XOR static string decryption (`"ARGON_KEY!"`), ARM64 `BL` symbol resolution, ARM64-to-Pseudo-C decompilation (`0x10006 /* JNI_VERSION_1_6 */`), automated Frida hook script generation (`frida_argon_hooks.js`), and SQLi parameter taint attribution.
 
 ---
 
@@ -204,10 +258,10 @@ ArgonDEX-Studio/
 │   ├── axml_arsc_parser.js         # Binary AXML & resources.arsc decoder
 │   ├── dex_decompiler.js           # Dalvik parser, Smali disassembler, CFG & Java AST engine
 │   ├── elf_security_engine.js      # ELF32/64 parser, JNI linker & OWASP MASVS auditor
-│   ├── advanced_analysis_engine.js # SSA Taint, Smart Deobfuscator, ARM64 Disasm & Crypto Scanner
+│   ├── advanced_analysis_engine.js # Worklist SSA Taint, XOR Decryptor, ARM64 Pseudo-C & Frida Gen
 │   ├── sample_apk_builder.js       # Binary APK synthesizer (DEX + AXML + ARSC + ELF64 + Cert)
 │   └── app.js                      # IDE controller, syntax highlighters, SVG CFG & exporter
 ├── tests/
-│   └── test_suite.js               # 13-stage functional & security vulnerability test suite
-└── decompiled_out/                 # Reference CLI decompilation output for ArgonVault sample APK
+│   └── test_suite.js               # 18-stage functional, decompiler & security test suite
+└── decompiled_out/                 # Reference CLI output (Java, Smali, Pseudo-C, Frida hooks, JSON)
 ```

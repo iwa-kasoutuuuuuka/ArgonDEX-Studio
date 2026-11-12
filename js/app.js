@@ -931,8 +931,9 @@
 
         ctx.fillStyle = '#00e5ff';
         ctx.font = 'bold 11.5px JetBrains Mono, monospace';
+        const idomLabel = (metrics && metrics.dominatorMap && metrics.dominatorMap.get(n.block.id)) || '';
         ctx.fillText(
-          `Block ${n.block.id}  [@0x${n.block.startPc.toString(16).padStart(4, '0')} .. @0x${n.block.endPc.toString(16).padStart(4, '0')}]`,
+          `Block ${n.block.id}  [@0x${n.block.startPc.toString(16).padStart(4, '0')}..@0x${n.block.endPc.toString(16).padStart(4, '0')}]${idomLabel ? '  idom:' + idomLabel : ''}`,
           n.x + 12,
           n.y + 17
         );

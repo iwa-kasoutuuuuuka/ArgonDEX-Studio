@@ -1485,15 +1485,27 @@
         indentLevel++;
       }
 
+      let loopHeaderConsumedBranch = false;
       if (loopHeaders.has(ins.pc)) {
-        emit('while (true) {');
-        indentLevel++;
         const latchPc = loopHeaders.get(ins.pc);
         activeLoopLatchPc = latchPc;
         const latchIdx = insnIdxByPc.get(latchPc);
         if (latchIdx != null && latchIdx + 1 < insns.length) {
           pushCloseAt(insns[latchIdx + 1].pc, { type: 'close', isLoop: true });
         }
+        // If the loop header instruction itself is a loop-exit conditional branch, fold it into while (cond)
+        if (ins.opcode >= 0x32 && ins.opcode <= 0x3d && ins.target > latchPc) {
+          emit(`while (${formatCondExpr(ins, true)}) {`);
+          indentLevel++;
+          loopHeaderConsumedBranch = true;
+        } else {
+          emit('while (true) {');
+          indentLevel++;
+        }
+      }
+
+      if (loopHeaderConsumedBranch) {
+        continue;
       }
 
       const op = ins.opcode;
