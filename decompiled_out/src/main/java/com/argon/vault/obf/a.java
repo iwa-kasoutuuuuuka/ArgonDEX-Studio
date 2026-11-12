@@ -19,11 +19,14 @@ public final class a {
     }
 
     public byte[] a(String arg0) {
-        Cipher v0 = Cipher.getInstance(this.a);
+        synchronized (this) {
+            Cipher v0 = Cipher.getInstance(this.a);
+        }
         return NativeBridge.deriveHardwareKey(arg0, this.b);
     }
 
     public int b(int arg0, int arg1) {
+        byte[] v0 = new byte[]{ 0x1b, 0x08, 0x1d, 0x15, 0x14, 0x05, 0x11, 0x1f, 0x03, 0x7b };
         return ((arg0 + arg1) * 31);
     }
 

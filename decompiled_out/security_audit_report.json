@@ -1,24 +1,24 @@
 {
   "fileName": "ArgonVault_v2.4.1_sample.apk",
-  "fileSize": 12660,
-  "sha256": "9accff1f0a8c63b6c0682d43a2c353f85ceec20611282d3df4c9f9f6592f77eb",
-  "entropy": 4.193,
+  "fileSize": 12700,
+  "sha256": "eb7fb9cdeabbf0a8c05147d5762de130e06e4368e8685f992c8cd52988c50c56",
+  "entropy": 4.199,
   "signingBlock": {
     "present": true,
-    "blockStart": 12051,
+    "blockStart": 12091,
     "blockSize": 120,
     "schemes": [
       {
         "id": "0x7109871a",
         "name": "APK Signature Scheme v2",
         "size": 32,
-        "offset": 12071
+        "offset": 12111
       },
       {
         "id": "0xf05368c0",
         "name": "APK Signature Scheme v3",
         "size": 32,
-        "offset": 12115
+        "offset": 12155
       }
     ],
     "v2Signed": true,
@@ -246,10 +246,10 @@
       "methodName": "a",
       "source": "Method Parameter arg0 (a.a)",
       "sink": "JNI Hardware Key Derivation Sink (NativeBridge.deriveHardwareKey)",
-      "sinkPc": "0x0008",
+      "sinkPc": "0x0009",
       "steps": [
         "[Entry] Parameter p1 (arg0: String) enters a.a()",
-        "[0x0008] 🚨 SINK REACHED: Tainted register passed to Lcom/argon/vault/NativeBridge;->deriveHardwareKey(Ljava/lang/String;I)[B"
+        "[0x0009] 🚨 SINK REACHED: Tainted register passed to Lcom/argon/vault/NativeBridge;->deriveHardwareKey(Ljava/lang/String;I)[B"
       ]
     }
   ],
@@ -284,7 +284,18 @@
         "kind": "METHOD",
         "original": "a.b()",
         "renamed": "computeInt_b()",
-        "reason": "Integer computation method"
+        "reason": "Integer computation & XOR array method"
+      }
+    ],
+    "decryptedStrings": [
+      {
+        "className": "com.argon.vault.obf.a",
+        "methodName": "b",
+        "payloadPc": "0x000e",
+        "cipherType": "XOR Byte-Array (key=0x5a)",
+        "keyHex": "0x5a",
+        "encryptedHex": "1b 08 1d 15 14 05 11 1f 03 7b",
+        "decrypted": "ARGON_KEY!"
       }
     ],
     "fingerprints": [
@@ -292,6 +303,11 @@
         "name": "R8 / ProGuard Identifier Minification",
         "type": "Obfuscator",
         "confidence": "22% Symbol Density"
+      },
+      {
+        "name": "XOR Byte-Array String Encryption (1 decrypted)",
+        "type": "String Obfuscation",
+        "confidence": "Statically Decrypted"
       },
       {
         "name": "Android NDK Native JNI (ARM64 (AArch64))",
@@ -309,13 +325,13 @@
     {
       "algorithm": "AES-128/192/256",
       "description": "AES Rijndael Forward S-Box (256-byte lookup table)",
-      "archiveOffset": "0x00002b8c",
+      "archiveOffset": "0x00002bb4",
       "previewHex": "63 7c 77 7b f2 6b 6f c5 ..."
     },
     {
       "algorithm": "ChaCha20 Stream Cipher",
       "description": "ChaCha20 / Salsa20 Sigma Constant (\"expand 32-byte k\")",
-      "archiveOffset": "0x00002b9c",
+      "archiveOffset": "0x00002bc4",
       "previewHex": "65 78 70 61 6e 64 20 33 ..."
     }
   ],
@@ -368,7 +384,12 @@
           "hexBytes": "fd 7b bf a9",
           "mnemonic": "stp",
           "operands": "x29, x30, [xzr/sp]",
-          "comment": "Store pair (prologue)"
+          "comment": "Store pair (prologue)",
+          "_decoded": {
+            "mnemonic": "stp",
+            "operands": "x29, x30, [xzr/sp]",
+            "comment": "Store pair (prologue)"
+          }
         },
         {
           "label": null,
@@ -377,7 +398,16 @@
           "hexBytes": "c0 00 80 52",
           "mnemonic": "movz",
           "operands": "w0, #0x6",
-          "comment": "=6"
+          "comment": "=6",
+          "_decoded": {
+            "mnemonic": "movz",
+            "operands": "w0, #0x6",
+            "comment": "=6",
+            "rd": 0,
+            "is64": false,
+            "imm16": 6,
+            "hw": 0
+          }
         },
         {
           "label": null,
@@ -386,7 +416,16 @@
           "hexBytes": "20 00 a0 72",
           "mnemonic": "movk",
           "operands": "w0, #0x1, lsl #16",
-          "comment": ""
+          "comment": "",
+          "_decoded": {
+            "mnemonic": "movk",
+            "operands": "w0, #0x1, lsl #16",
+            "comment": "",
+            "rd": 0,
+            "is64": false,
+            "imm16": 1,
+            "hw": 16
+          }
         },
         {
           "label": null,
@@ -395,7 +434,12 @@
           "hexBytes": "c0 03 5f d6",
           "mnemonic": "ret",
           "operands": "x30",
-          "comment": "Subroutine return"
+          "comment": "Subroutine return",
+          "_decoded": {
+            "mnemonic": "ret",
+            "operands": "x30",
+            "comment": "Subroutine return"
+          }
         },
         {
           "label": "Java_com_argon_vault_NativeBridge_deriveHardwareKey",
@@ -404,7 +448,12 @@
           "hexBytes": "fd 7b bf a9",
           "mnemonic": "stp",
           "operands": "x29, x30, [xzr/sp]",
-          "comment": "Store pair (prologue)"
+          "comment": "Store pair (prologue)",
+          "_decoded": {
+            "mnemonic": "stp",
+            "operands": "x29, x30, [xzr/sp]",
+            "comment": "Store pair (prologue)"
+          }
         },
         {
           "label": null,
@@ -413,7 +462,15 @@
           "hexBytes": "f3 03 00 aa",
           "mnemonic": "mov",
           "operands": "x19, x0",
-          "comment": "ORR alias"
+          "comment": "ORR alias",
+          "_decoded": {
+            "mnemonic": "mov",
+            "operands": "x19, x0",
+            "comment": "ORR alias",
+            "rd": 19,
+            "rm": 0,
+            "is64": true
+          }
         },
         {
           "label": null,
@@ -422,7 +479,15 @@
           "hexBytes": "f4 03 02 aa",
           "mnemonic": "mov",
           "operands": "x20, x2",
-          "comment": "ORR alias"
+          "comment": "ORR alias",
+          "_decoded": {
+            "mnemonic": "mov",
+            "operands": "x20, x2",
+            "comment": "ORR alias",
+            "rd": 20,
+            "rm": 2,
+            "is64": true
+          }
         },
         {
           "label": null,
@@ -431,7 +496,16 @@
           "hexBytes": "ff 83 00 91",
           "mnemonic": "add",
           "operands": "xzr/sp, xzr/sp, #0x20",
-          "comment": "32"
+          "comment": "32",
+          "_decoded": {
+            "mnemonic": "add",
+            "operands": "xzr/sp, xzr/sp, #0x20",
+            "comment": "32",
+            "rd": 31,
+            "rn": 31,
+            "is64": true,
+            "imm": 32
+          }
         },
         {
           "label": null,
@@ -440,7 +514,16 @@
           "hexBytes": "60 02 14 ca",
           "mnemonic": "eor",
           "operands": "x0, x19, x20",
-          "comment": ""
+          "comment": "",
+          "_decoded": {
+            "mnemonic": "eor",
+            "operands": "x0, x19, x20",
+            "comment": "",
+            "rd": 0,
+            "rn": 19,
+            "rm": 20,
+            "is64": true
+          }
         },
         {
           "label": null,
@@ -448,8 +531,15 @@
           "fileOffset": "0x02fc",
           "hexBytes": "04 00 00 94",
           "mnemonic": "bl",
-          "operands": "0x1034",
-          "comment": "Branch with Link (call)"
+          "operands": "0x1034 <sub_1034_internal>",
+          "comment": "Call sub_1034_internal()",
+          "_decoded": {
+            "mnemonic": "bl",
+            "operands": "0x1034 <sub_1034_internal>",
+            "comment": "Call sub_1034_internal()",
+            "target": 4148,
+            "targetSymbol": "sub_1034_internal"
+          }
         },
         {
           "label": null,
@@ -458,7 +548,12 @@
           "hexBytes": "fd 7b c1 a8",
           "mnemonic": "ldp",
           "operands": "x29, x30, [xzr/sp]",
-          "comment": "Load pair (epilogue)"
+          "comment": "Load pair (epilogue)",
+          "_decoded": {
+            "mnemonic": "ldp",
+            "operands": "x29, x30, [xzr/sp]",
+            "comment": "Load pair (epilogue)"
+          }
         },
         {
           "label": null,
@@ -467,7 +562,12 @@
           "hexBytes": "c0 03 5f d6",
           "mnemonic": "ret",
           "operands": "x30",
-          "comment": "Subroutine return"
+          "comment": "Subroutine return",
+          "_decoded": {
+            "mnemonic": "ret",
+            "operands": "x30",
+            "comment": "Subroutine return"
+          }
         },
         {
           "label": "Java_com_argon_vault_NativeBridge_verifyDeviceIntegrity",
@@ -476,16 +576,34 @@
           "hexBytes": "5f 39 05 71",
           "mnemonic": "sub",
           "operands": "wzr, w10, #0x14e",
-          "comment": "334"
+          "comment": "334",
+          "_decoded": {
+            "mnemonic": "sub",
+            "operands": "wzr, w10, #0x14e",
+            "comment": "334",
+            "rd": 31,
+            "rn": 10,
+            "is64": false,
+            "imm": 334
+          }
         },
         {
-          "label": null,
+          "label": "sub_1034_internal",
           "vaddr": "0x00001034",
           "fileOffset": "0x030c",
           "hexBytes": "20 00 80 52",
           "mnemonic": "movz",
           "operands": "w0, #0x1",
-          "comment": "=1"
+          "comment": "=1",
+          "_decoded": {
+            "mnemonic": "movz",
+            "operands": "w0, #0x1",
+            "comment": "=1",
+            "rd": 0,
+            "is64": false,
+            "imm16": 1,
+            "hw": 0
+          }
         },
         {
           "label": null,
@@ -494,7 +612,16 @@
           "hexBytes": "00 04 00 11",
           "mnemonic": "add",
           "operands": "w0, w0, #0x1",
-          "comment": "1"
+          "comment": "1",
+          "_decoded": {
+            "mnemonic": "add",
+            "operands": "w0, w0, #0x1",
+            "comment": "1",
+            "rd": 0,
+            "rn": 0,
+            "is64": false,
+            "imm": 1
+          }
         },
         {
           "label": null,
@@ -503,7 +630,16 @@
           "hexBytes": "00 04 00 51",
           "mnemonic": "sub",
           "operands": "w0, w0, #0x1",
-          "comment": "1"
+          "comment": "1",
+          "_decoded": {
+            "mnemonic": "sub",
+            "operands": "w0, w0, #0x1",
+            "comment": "1",
+            "rd": 0,
+            "rn": 0,
+            "is64": false,
+            "imm": 1
+          }
         },
         {
           "label": null,
@@ -512,7 +648,12 @@
           "hexBytes": "c0 03 5f d6",
           "mnemonic": "ret",
           "operands": "x30",
-          "comment": "Subroutine return"
+          "comment": "Subroutine return",
+          "_decoded": {
+            "mnemonic": "ret",
+            "operands": "x30",
+            "comment": "Subroutine return"
+          }
         },
         {
           "label": null,
@@ -521,7 +662,12 @@
           "hexBytes": "63 7c 77 7b",
           "mnemonic": ".word",
           "operands": "0x7b777c63",
-          "comment": "AArch64 instruction word"
+          "comment": "AArch64 instruction word",
+          "_decoded": {
+            "mnemonic": ".word",
+            "operands": "0x7b777c63",
+            "comment": "AArch64 instruction word"
+          }
         },
         {
           "label": null,
@@ -530,7 +676,12 @@
           "hexBytes": "f2 6b 6f c5",
           "mnemonic": ".word",
           "operands": "0xc56f6bf2",
-          "comment": "AArch64 instruction word"
+          "comment": "AArch64 instruction word",
+          "_decoded": {
+            "mnemonic": ".word",
+            "operands": "0xc56f6bf2",
+            "comment": "AArch64 instruction word"
+          }
         },
         {
           "label": null,
@@ -539,7 +690,16 @@
           "hexBytes": "30 01 67 2b",
           "mnemonic": "add",
           "operands": "w16, w9, w7",
-          "comment": ""
+          "comment": "",
+          "_decoded": {
+            "mnemonic": "add",
+            "operands": "w16, w9, w7",
+            "comment": "",
+            "rd": 16,
+            "rn": 9,
+            "rm": 7,
+            "is64": false
+          }
         },
         {
           "label": null,
@@ -548,7 +708,12 @@
           "hexBytes": "fe d7 ab 76",
           "mnemonic": ".word",
           "operands": "0x76abd7fe",
-          "comment": "AArch64 instruction word"
+          "comment": "AArch64 instruction word",
+          "_decoded": {
+            "mnemonic": ".word",
+            "operands": "0x76abd7fe",
+            "comment": "AArch64 instruction word"
+          }
         },
         {
           "label": null,
@@ -557,7 +722,12 @@
           "hexBytes": "65 78 70 61",
           "mnemonic": ".word",
           "operands": "0x61707865",
-          "comment": "AArch64 instruction word"
+          "comment": "AArch64 instruction word",
+          "_decoded": {
+            "mnemonic": ".word",
+            "operands": "0x61707865",
+            "comment": "AArch64 instruction word"
+          }
         },
         {
           "label": null,
@@ -566,7 +736,12 @@
           "hexBytes": "6e 64 20 33",
           "mnemonic": ".word",
           "operands": "0x3320646e",
-          "comment": "AArch64 instruction word"
+          "comment": "AArch64 instruction word",
+          "_decoded": {
+            "mnemonic": ".word",
+            "operands": "0x3320646e",
+            "comment": "AArch64 instruction word"
+          }
         },
         {
           "label": null,
@@ -575,7 +750,16 @@
           "hexBytes": "32 2d 62 79",
           "mnemonic": "ldr",
           "operands": "w18, [x9, #0x222c]",
-          "comment": ""
+          "comment": "",
+          "_decoded": {
+            "mnemonic": "ldr",
+            "operands": "w18, [x9, #0x222c]",
+            "comment": "",
+            "rd": 18,
+            "rn": 9,
+            "imm": 8748,
+            "is64": false
+          }
         },
         {
           "label": null,
@@ -584,9 +768,19 @@
           "hexBytes": "74 65 20 6b",
           "mnemonic": "sub",
           "operands": "w20, w11, w0",
-          "comment": ""
+          "comment": "",
+          "_decoded": {
+            "mnemonic": "sub",
+            "operands": "w20, w11, w0",
+            "comment": "",
+            "rd": 20,
+            "rn": 11,
+            "rm": 0,
+            "is64": false
+          }
         }
-      ]
+      ],
+      "pseudoC": "/*\n * ArgonDEX Studio — ARM64 (AArch64) to Pseudo-C Native Decompiler\n * Binary: lib/arm64-v8a/libnative-vault.so (ARM64 (AArch64))\n */\n#include <jni.h>\n#include <stdint.h>\n\n// @vaddr 0x00001000\nJNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm /* x0 */, void* reserved /* x1 */) {\n    return 0x10006 /* JNI_VERSION_1_6 */;\n}\n\n// @vaddr 0x00001010\nJNIEXPORT uint64_t JNICALL Java_com_argon_vault_NativeBridge_deriveHardwareKey(JNIEnv* env /* x0 */, jobject thiz /* x1 */, uint64_t arg0 /* x2 */, uint64_t arg1 /* x3 */) {\n    uint64_t x19 = env;\n    uint64_t x20 = arg0;\n    uint64_t v_1020 = (x19 ^ x20);\n    uint64_t call_1024 = sub_1034_internal(v_1020, thiz);\n    return call_1024;\n}\n\n// @vaddr 0x00001030\nJNIEXPORT uint64_t JNICALL Java_com_argon_vault_NativeBridge_verifyDeviceIntegrity(JNIEnv* env /* x0 */, jobject thiz /* x1 */, uint64_t arg0 /* x2 */, uint64_t arg1 /* x3 */) {\n    return env;\n}\n\n// @vaddr 0x00001034\nstatic uint64_t sub_1034_internal(uint64_t a0 /* x0 */, uint64_t a1 /* x1 */) {\n    uint64_t v_1038 = (0x1 + 0x1);\n    uint64_t v_103c = (v_1038 - 0x1);\n    return v_103c;\n}\n"
     }
   ],
   "securityAudit": {

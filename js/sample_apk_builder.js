@@ -1085,12 +1085,14 @@
             code: {
               regs: 4, ins: 2, outs: 2,
               words: [
+                ...op11x(0x1d, 2), // monitor-enter p0 (synchronized block)
                 ...op22c(0x54, 0, 2, fieldIdx('Lcom/argon/vault/obf/a;', 'a')),
                 ...op35c(0x71, [0], mIdx('Ljavax/crypto/Cipher;', 'getInstance')),
                 ...op11x(0x0c, 0),
                 ...op22c(0x52, 1, 2, fieldIdx('Lcom/argon/vault/obf/a;', 'b')),
                 ...op35c(0x71, [3, 1], mIdx('Lcom/argon/vault/NativeBridge;', 'deriveHardwareKey')),
                 ...op11x(0x0c, 1),
+                ...op11x(0x1e, 2), // monitor-exit p0
                 ...op11x(0x11, 1)
               ]
             }
@@ -1101,9 +1103,16 @@
             code: {
               regs: 4, ins: 3, outs: 0,
               words: [
-                ...op23x(0x90, 0, 2, 3), // add-int v0, p1, p2
-                ...op22b(0xda, 0, 0, 31), // mul-int/lit8 v0, v0, 31
-                ...op11x(0x0f, 0) // return v0
+                ...op21s(0x13, 1, 10), // const/16 v1, 10 (pc 0..1)
+                ...op22c(0x23, 0, 1, typeIdx('[B')), // new-array v0, v1, [B (pc 2..3)
+                0x26 | (0 << 8), 10, 0, // fill-array-data v0, +10 -> pc 14 (pc 4..6)
+                ...op22b(0xdf, 1, 1, 0x5a), // xor-int/lit8 v1, v1, 0x5a (pc 7..8)
+                ...op23x(0x90, 0, 2, 3), // add-int v0, p1, p2 (pc 9..10)
+                ...op22b(0xda, 0, 0, 31), // mul-int/lit8 v0, v0, 31 (pc 11..12)
+                ...op11x(0x0f, 0), // return v0 (pc 13)
+                // fill-array-data-payload @ pc 14: "ARGON_KEY!" ^ 0x5A
+                0x0300, 0x0001, 10, 0,
+                0x081b, 0x151d, 0x0514, 0x1f11, 0x7b03
               ]
             }
           }

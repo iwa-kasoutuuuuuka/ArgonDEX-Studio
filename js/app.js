@@ -192,8 +192,14 @@
     return loadAndAnalyzeApkBuffer(arrayBuffer, fileName);
   }
 
+  function yieldToUi() {
+    return new Promise(resolve => setTimeout(resolve, 0));
+  }
+
   async function loadAndAnalyzeApkBuffer(arrayBuffer, fileName) {
     const t0 = performance.now();
+    setStatus(`Parsing ZIP archive & APK Signing Block (${fileName})...`);
+    await yieldToUi();
     const apk = await global.ArgonZip.parseApkArchive(arrayBuffer, fileName);
 
     // 1. Parse resources.arsc first so resource IDs (0x7f...) resolve everywhere
@@ -220,7 +226,7 @@
       }
     }
 
-    // 3. Parse all classes*.dex files
+    // 3. Parse all classes*.dex files with non-blocking chunk yields for large Multi-DEX APKs
     const dexFiles = [];
     const allClasses = [];
     const classByName = new Map();
@@ -232,6 +238,8 @@
 
     for (const dexEntry of dexEntries) {
       try {
+        setStatus(`Decoding Dalvik bytecode (${dexEntry.name})...`);
+        await yieldToUi();
         const dexBytes = await dexEntry.extract();
         const parsedDex = global.ArgonDex.parseDexFile(dexBytes, dexEntry.name, arsc);
         dexFiles.push(parsedDex);
@@ -245,15 +253,17 @@
       }
     }
 
-    // Pre-decompile classes to collect cross-references
-    for (const cls of allClasses) {
-      const dec = global.ArgonDex.decompileClassToJava(cls, arsc);
+    // Pre-decompile up to 250 classes eagerly for cross-references; larger Multi-DEX APKs decompile lazily on demand
+    const eagerLimit = Math.min(allClasses.length, 250);
+    for (let idx = 0; idx < eagerLimit; idx++) {
+      if (idx > 0 && idx % 60 === 0) await yieldToUi();
+      const dec = global.ArgonDex.decompileClassToJava(allClasses[idx], arsc);
       for (const xref of dec.crossRefs) {
         allCrossRefs.push(xref);
       }
     }
 
-    // 4. Parse all native ELF (.so) libraries
+    // 4. Parse all native ELF (.so) libraries + ARM64 Disassembly + Pseudo-C Decompilation
     const elfFiles = [];
     const jniByClassMethod = new Map();
     const soEntries = apk.entries.filter(e => e.name.endsWith('.so'));
@@ -264,6 +274,9 @@
         parsedElf.disassembly = global.ArgonAdvanced
           ? global.ArgonAdvanced.disassembleElfTextSection(soBytes, parsedElf)
           : [];
+        parsedElf.pseudoC = global.ArgonAdvanced
+          ? global.ArgonAdvanced.decompileArm64ToPseudoC(soBytes, parsedElf)
+          : '';
         elfFiles.push(parsedElf);
         for (const jni of parsedElf.jniMethods) {
           if (jni.type === 'method') {
@@ -275,7 +288,7 @@
       }
     }
 
-    // 5. Run Static Security Audit + Taint Analysis + Deobfuscation + Crypto S-Box Scan
+    // 5. Run Static Security Audit + Multi-Hop Worklist Taint Analysis + Smart Deobfuscation + Frida Script Generation
     const securityAudit = global.ArgonElfSecurity.runStaticSecurityAudit(
       manifestInfo,
       dexFiles,
@@ -290,6 +303,9 @@
     const cryptoConstants = global.ArgonAdvanced
       ? global.ArgonAdvanced.scanCryptographicConstants(apk.entries, apk.rawBytes)
       : [];
+    const fridaScript = global.ArgonAdvanced
+      ? global.ArgonAdvanced.generateFridaHookScript(apk, manifestInfo, dexFiles, elfFiles, taintFlows, deobfData)
+      : '';
 
     // Update global state
     State.apk = apk;
@@ -305,6 +321,8 @@
     State.taintFlows = taintFlows;
     State.deobfData = deobfData;
     State.cryptoConstants = cryptoConstants;
+    State.fridaScript = fridaScript;
+    State.sidebarRenderLimit = 300;
     if (State.smartDeobfEnabled === undefined) State.smartDeobfEnabled = true;
     State.allCrossRefs = allCrossRefs;
 
@@ -377,7 +395,13 @@
       if (byPkg.size === 0) {
         html.push(`<div style="padding:16px;color:var(--text-muted)">No matching DEX classes found.</div>`);
       } else {
+        const maxItems = State.sidebarRenderLimit || 300;
+        let renderedCount = 0;
+        let totalMatched = 0;
+        for (const clsList of byPkg.values()) totalMatched += clsList.length;
+
         for (const [pkg, clsList] of byPkg.entries()) {
+          if (renderedCount >= maxItems) break;
           html.push(`
             <div class="tree-group-header">
               <span>📦 ${escapeHtml(pkg)}</span>
@@ -385,6 +409,8 @@
             </div>
           `);
           for (const cls of clsList) {
+            if (renderedCount >= maxItems) break;
+            renderedCount++;
             const isSel = State.selectedClass && State.selectedClass.fullName === cls.fullName && State.activeMode === 'code';
             const iconCls = cls.isInterface ? 'icon-iface' : 'icon-cls';
             const iconChar = cls.isInterface ? 'I' : 'C';
@@ -396,6 +422,13 @@
               </div>
             `);
           }
+        }
+        if (totalMatched > renderedCount) {
+          html.push(`
+            <div class="tree-item" data-action="load-more-classes" style="justify-content:center;color:var(--accent-cyan);font-weight:700">
+              <span>➕ Show more classes (${renderedCount} / ${totalMatched})</span>
+            </div>
+          `);
         }
       }
     } else if (State.sidebarTab === 'files') {
@@ -1388,38 +1421,48 @@
           </div>
         </div>
 
-        <div class="section-card">
-          <div class="section-card-header">
-            <span>⚙️ Native ARM64 (AArch64) Machine Code Disassembler — .text Section (${(elf.disassembly || []).length} Instructions)</span>
-            <span>Direct 32-bit Instruction Word Decoding</span>
-          </div>
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th style="width:130px">Virtual Addr</th>
-                <th style="width:100px">File Off</th>
-                <th style="width:130px">32-Bit Opcode</th>
-                <th style="width:110px">Mnemonic</th>
-                <th>Operands</th>
-                <th>Exported Symbol / Comment</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${(elf.disassembly || []).map(ins => `
-                <tr ${ins.label ? 'style="background:rgba(0, 229, 255, 0.08)"' : ''}>
-                  <td style="color:var(--accent-indigo);font-weight:600">${ins.vaddr}</td>
-                  <td style="color:var(--text-muted)">${ins.fileOffset}</td>
-                  <td style="color:var(--text-secondary)">${ins.hexBytes}</td>
-                  <td style="color:var(--accent-amber);font-weight:700">${escapeHtml(ins.mnemonic)}</td>
-                  <td style="color:var(--accent-emerald);font-weight:600">${escapeHtml(ins.operands)}</td>
-                  <td>
-                    ${ins.label ? `<span class="badge badge-critical" style="margin-right:8px">${escapeHtml(ins.label)}:</span>` : ''}
-                    <span style="color:var(--text-muted)">${escapeHtml(ins.comment)}</span>
-                  </td>
+        <div style="display:grid;grid-template-columns:1.1fr 0.9fr;gap:16px">
+          <div class="section-card">
+            <div class="section-card-header">
+              <span>⚙️ Native ARM64 (AArch64) Disassembler — .text (${(elf.disassembly || []).length} Instructions)</span>
+              <span>With Symbol &amp; PLT Target Resolution</span>
+            </div>
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th style="width:110px">VAddr</th>
+                  <th style="width:115px">Opcode</th>
+                  <th style="width:90px">Mnemonic</th>
+                  <th>Operands</th>
+                  <th>Symbol / Comment</th>
                 </tr>
-              `).join('')}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                ${(elf.disassembly || []).map(ins => `
+                  <tr ${ins.label ? 'style="background:rgba(0, 229, 255, 0.08)"' : ''}>
+                    <td style="color:var(--accent-indigo);font-weight:600">${ins.vaddr}</td>
+                    <td style="color:var(--text-secondary)">${ins.hexBytes}</td>
+                    <td style="color:var(--accent-amber);font-weight:700">${escapeHtml(ins.mnemonic)}</td>
+                    <td style="color:var(--accent-emerald);font-weight:600">${escapeHtml(ins.operands)}</td>
+                    <td>
+                      ${ins.label ? `<span class="badge badge-critical" style="margin-right:6px">${escapeHtml(ins.label)}:</span>` : ''}
+                      <span style="color:var(--text-muted)">${escapeHtml(ins.comment)}</span>
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+
+          <div class="section-card">
+            <div class="section-card-header">
+              <span>🔬 ARM64-to-Pseudo-C Native Decompiler</span>
+              <span class="badge badge-ok">AAPCS64 + JNI Recovery</span>
+            </div>
+            <div class="code-scroll-box" style="max-height:520px">
+              ${renderCodeLinesHtml(elf.pseudoC || '// No Pseudo-C output', 'java')}
+            </div>
+          </div>
         </div>
       </div>
     `;
@@ -1555,6 +1598,28 @@
 
             <div class="section-card">
               <div class="section-card-header">
+                <span>🔓 Statically Decrypted XOR / Obfuscated Strings (${(deobf.decryptedStrings || []).length})</span>
+                <span class="badge badge-ok">Dalvik Emulated Decryptor</span>
+              </div>
+              <table class="data-table">
+                <thead>
+                  <tr><th>Location</th><th>Cipher / Key</th><th>Encrypted Bytes</th><th>Decrypted Plaintext</th></tr>
+                </thead>
+                <tbody>
+                  ${(deobf.decryptedStrings || []).map(d => `
+                    <tr>
+                      <td><span class="tok-xref" data-xref-class="${escapeHtml(d.className)}">${escapeHtml(d.className.split('.').pop())}.${escapeHtml(d.methodName)}()</span></td>
+                      <td><span class="badge badge-medium">${escapeHtml(d.cipherType)}</span></td>
+                      <td style="color:var(--text-muted);font-family:var(--font-mono);font-size:11px">${escapeHtml(d.encryptedHex)}</td>
+                      <td style="color:var(--accent-emerald);font-weight:700;font-family:var(--font-mono)">"${escapeHtml(d.decrypted)}"</td>
+                    </tr>
+                  `).join('') || '<tr><td colspan="4" style="color:var(--text-muted)">No XOR-encrypted byte arrays detected.</td></tr>'}
+                </tbody>
+              </table>
+            </div>
+
+            <div class="section-card">
+              <div class="section-card-header">
                 <span>🧬 Compiler, Packer &amp; Toolchain Fingerprints</span>
                 <span>Heuristic Signatures</span>
               </div>
@@ -1575,8 +1640,31 @@
             </div>
           </div>
         </div>
+
+        <div class="section-card">
+          <div class="section-card-header">
+            <span>⚡ Automated Frida Dynamic Instrumentation Script (Java Sinks + Crypto + Native JNI Interceptor)</span>
+            <button class="btn btn-primary" id="btn-download-frida" style="padding:3px 10px;font-size:11px">⬇️ Download frida_argon_hooks.js</button>
+          </div>
+          <div class="code-scroll-box" style="max-height:280px">
+            ${renderCodeLinesHtml(State.fridaScript || '// No Frida script generated', 'java')}
+          </div>
+        </div>
       </div>
     `;
+
+    const btnFrida = document.getElementById('btn-download-frida');
+    if (btnFrida) {
+      btnFrida.addEventListener('click', () => {
+        const blob = new Blob([State.fridaScript || ''], { type: 'application/javascript' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'frida_argon_hooks.js';
+        a.click();
+        URL.revokeObjectURL(url);
+      });
+    }
   }
 
   // -------------------- VIEW 7: OWASP MASVS STATIC SECURITY AUDITOR --------------------
@@ -1925,7 +2013,24 @@
       });
     }
 
-    // 4. Security Audit & ELF Native Report
+    // 4. Security Audit, Frida Hook Script & Native Pseudo-C Report
+    if (State.fridaScript) {
+      outFiles.push({
+        name: 'frida_argon_hooks.js',
+        data: encoder.encode(State.fridaScript)
+      });
+    }
+
+    for (const elf of State.elfFiles) {
+      if (elf.pseudoC) {
+        const baseSo = elf.fileName.split('/').pop().replace(/[^A-Za-z0-9_.-]/g, '_');
+        outFiles.push({
+          name: `native_pseudo_c/${baseSo}.c`,
+          data: encoder.encode(elf.pseudoC)
+        });
+      }
+    }
+
     if (State.securityAudit) {
       outFiles.push({
         name: 'security_audit_report.json',
@@ -1934,6 +2039,8 @@
           sha256: State.apk.sha256,
           manifest: State.manifestInfo,
           securityAudit: State.securityAudit,
+          taintFlows: State.taintFlows,
+          decryptedStrings: State.deobfData ? State.deobfData.decryptedStrings : [],
           nativeLibraries: State.elfFiles
         }, null, 2))
       });
@@ -2066,6 +2173,9 @@
         const act = actionEl.dataset.action;
         if (act === 'select-class') {
           jumpToClass(actionEl.dataset.classname);
+        } else if (act === 'load-more-classes') {
+          State.sidebarRenderLimit = (State.sidebarRenderLimit || 300) + 500;
+          renderLeftSidebar();
         } else if (act === 'select-file') {
           const fname = actionEl.dataset.filename;
           if (fname.endsWith('.xml')) {

@@ -199,6 +199,45 @@ async function test(name, fn) {
     assert(typeof out === 'string', 'Expected RegExp escaping to prevent SyntaxError');
   });
 
+  await test('14. [Phase 1] Synchronized Block, fill-array-data Literal & Dalvik XOR String Decryptor', async () => {
+    const obfCls = dex.classes.find(c => c.fullName === 'com.argon.vault.obf.a');
+    const dec = globalThis.ArgonDex.decompileClassToJava(obfCls, arsc);
+    assert(dec.java.includes('synchronized (this) {'), 'Expected monitor-enter/exit to reconstruct synchronized (this) block');
+    assert(dec.java.includes('new byte[]{ 0x1b, 0x08, 0x1d, 0x15'), 'Expected fill-array-data payload to reconstruct byte[] initializer');
+
+    const decrypted = globalThis.ArgonAdvanced.decryptObfuscatedStrings([dex]);
+    assert(decrypted.length >= 1, 'Expected at least 1 statically decrypted XOR string');
+    assert.strictEqual(decrypted[0].decrypted, 'ARGON_KEY!', 'Expected XOR-encrypted payload to decrypt to ARGON_KEY!');
+  });
+
+  await test('15. [Phase 2] ARM64 BL Target Symbol Resolution & ARM64-to-Pseudo-C Native Decompiler', async () => {
+    const soBytes = await apk.entryMap.get('lib/arm64-v8a/libnative-vault.so').extract();
+    const disasm = globalThis.ArgonAdvanced.disassembleElfTextSection(soBytes, elf);
+    const blIns = disasm.find(i => i.mnemonic === 'bl');
+    assert(blIns && blIns.operands.includes('<sub_'), 'Expected BL instruction to resolve target subroutine symbol');
+
+    const pseudoC = globalThis.ArgonAdvanced.decompileArm64ToPseudoC(soBytes, elf);
+    assert(pseudoC.includes('JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm'), 'Expected JNI_OnLoad signature in Pseudo-C');
+    assert(pseudoC.includes('Java_com_argon_vault_NativeBridge_deriveHardwareKey(JNIEnv* env'), 'Expected JNI method in Pseudo-C');
+    assert(pseudoC.includes('0x10006 /* JNI_VERSION_1_6 */'), 'Expected MOVZ+MOVK folding for JNI_VERSION_1_6');
+  });
+
+  await test('16. [Phase 2] Automated Frida Hook Script Generator (Java + Native Interceptor)', async () => {
+    const flows = globalThis.ArgonAdvanced.runTaintAnalysis([dex]);
+    const deobf = globalThis.ArgonAdvanced.analyzeObfuscationAndGenerateMappings(apk, [dex], [elf]);
+    const fridaJs = globalThis.ArgonAdvanced.generateFridaHookScript(apk, manifestInfo, [dex], [elf], flows, deobf);
+    assert(fridaJs.includes('Java.perform(function ()'), 'Expected Java.perform block');
+    assert(fridaJs.includes('Interceptor.attach('), 'Expected native Interceptor.attach block');
+    assert(fridaJs.includes('Java_com_argon_vault_NativeBridge_deriveHardwareKey'), 'Expected JNI hook target');
+  });
+
+  await test('17. [Phase 3] Multi-Hop Worklist SSA Taint Engine & Decompilation Memoization Cache', async () => {
+    const mainAct = dex.classes.find(c => c.fullName === 'com.argon.vault.MainActivity');
+    const dec1 = globalThis.ArgonDex.decompileClassToJava(mainAct, arsc);
+    const dec2 = globalThis.ArgonDex.decompileClassToJava(mainAct, arsc);
+    assert.strictEqual(dec1, dec2, 'Expected decompileClassToJava to return memoized _decompiledCache reference');
+  });
+
   console.log('====================================================================');
   console.log(` Results: ${passed} passed, ${failed} failed`);
   console.log('====================================================================');

@@ -20,18 +20,26 @@
 # virtual methods
 .method public a(Ljava/lang/String;)[B
     .registers 4
-    iget-object v0, p0, Lcom/argon/vault/obf/a;->a:Ljava/lang/String;    # @0000 [5420 0400]
-    invoke-static {v0}, Ljavax/crypto/Cipher;->getInstance(Ljava/lang/String;)Ljavax/crypto/Cipher;    # @0002 [7110 2300 0000]
-    move-result-object v0    # @0005 [0c00]
-    iget v1, p0, Lcom/argon/vault/obf/a;->b:I    # @0006 [5221 0500]
-    invoke-static {p1, v1}, Lcom/argon/vault/NativeBridge;->deriveHardwareKey(Ljava/lang/String;I)[B    # @0008 [7120 0f00 1300]
-    move-result-object v1    # @000b [0c01]
-    return-object v1    # @000c [1101]
+    monitor-enter p0    # @0000 [1d02]
+    iget-object v0, p0, Lcom/argon/vault/obf/a;->a:Ljava/lang/String;    # @0001 [5420 0400]
+    invoke-static {v0}, Ljavax/crypto/Cipher;->getInstance(Ljava/lang/String;)Ljavax/crypto/Cipher;    # @0003 [7110 2300 0000]
+    move-result-object v0    # @0006 [0c00]
+    iget v1, p0, Lcom/argon/vault/obf/a;->b:I    # @0007 [5221 0500]
+    invoke-static {p1, v1}, Lcom/argon/vault/NativeBridge;->deriveHardwareKey(Ljava/lang/String;I)[B    # @0009 [7120 0f00 1300]
+    move-result-object v1    # @000c [0c01]
+    monitor-exit p0    # @000d [1e02]
+    return-object v1    # @000e [1101]
 .end method
 
 .method public b(II)I
     .registers 4
-    add-int v0, p1, p2    # @0000 [9000 0203]
-    mul-int/lit8 v0, v0, 0x1f    # @0002 [da00 001f]
-    return v0    # @0004 [0f00]
+    const/16 p0, 0xa    # @0000 [1301 0a00]
+    new-array v0, p0, [B    # @0002 [2310 1700]
+    fill-array-data v0, :payload_e    # @0004 [2600 0a00 0000]
+    xor-int/lit8 p0, p0, 0x5a    # @0007 [df01 015a]
+    add-int v0, p1, p2    # @0009 [9000 0203]
+    mul-int/lit8 v0, v0, 0x1f    # @000b [da00 001f]
+    return v0    # @000d [0f00]
+    :goto_e
+    .array-data 1    # @000e [0003]
 .end method

@@ -611,7 +611,21 @@
           const size = u32(pc + 2);
           const totalBytes = size * elemWidth;
           const unitLen = 4 + Math.ceil(totalBytes / 2);
-          payloadMap.set(pc, { type: 'array-data', elemWidth, size });
+          const dataByteStart = insnsBase + (pc + 4) * 2;
+          const rawBytes = (dataByteStart + totalBytes <= bytes.length)
+            ? bytes.subarray(dataByteStart, dataByteStart + totalBytes)
+            : new Uint8Array(0);
+          const elements = [];
+          const maxPreview = Math.min(size, 64);
+          for (let e = 0; e < maxPreview; e++) {
+            const eOff = dataByteStart + e * elemWidth;
+            if (eOff + elemWidth > bytes.length) break;
+            if (elemWidth === 1) elements.push(dv.getInt8(eOff));
+            else if (elemWidth === 2) elements.push(dv.getInt16(eOff, true));
+            else if (elemWidth === 4) elements.push(dv.getInt32(eOff, true));
+            else if (elemWidth === 8) elements.push(dv.getInt32(eOff, true));
+          }
+          payloadMap.set(pc, { type: 'array-data', elemWidth, size, elements, rawBytes });
           instructions.push({ pc, unitLen, opcode: 0x00, name: '.array-data-payload', fmt: 'payload', smali: `.array-data ${elemWidth}`, rawHex: '0003' });
           pc += unitLen;
           continue;
@@ -1395,7 +1409,24 @@
     const statements = [];
     let indentLevel = 2;
     let activeLoopLatchPc = -1;
+    let activeSyncDepth = 0;
     const closeIndentAtPc = new Map(); // pc -> Array of closing actions
+
+    function formatCondExpr(branchIns, invert) {
+      const bOp = branchIns.opcode;
+      const bName = branchIns.name;
+      const isZeroCmp = bOp >= 0x38;
+      const lhs = getRegExpr(branchIns.vA);
+      const lhsType = getRegType(branchIns.vA);
+      let rhs = isZeroCmp ? '0' : getRegExpr(branchIns.vB);
+      if (isZeroCmp && lhsType === 'boolean') rhs = 'false';
+      else if (isZeroCmp && !['int', 'long', 'float', 'double', 'byte', 'short', 'char'].includes(lhsType)) rhs = 'null';
+      const opSym = invert ? (INVERT_COND[bName] || '!=') : (DIRECT_COND[bName] || '==');
+      if (lhsType === 'boolean' && rhs === 'false') {
+        return opSym === '!=' ? lhs : `!${lhs}`;
+      }
+      return `${lhs} ${opSym} ${rhs}`;
+    }
 
     function pushCloseAt(pc, action) {
       if (!closeIndentAtPc.has(pc)) closeIndentAtPc.set(pc, []);
@@ -1547,6 +1578,21 @@
         const tName = descriptorToJavaType(ins.refObj, importsSet);
         setReg(ins.vA, `${tName}.class`, 'Class<?>');
       }
+      // 7b. Synchronized monitor-enter / monitor-exit
+      else if (op === 0x1d) {
+        emit(`synchronized (${getRegExpr(ins.vA)}) {`);
+        indentLevel++;
+        activeSyncDepth++;
+      }
+      else if (op === 0x1e) {
+        const nextIns = i + 1 < insns.length ? insns[i + 1] : null;
+        const isCompilerExceptionExit = nextIns && nextIns.opcode === 0x27; // throw right after monitor-exit
+        if (activeSyncDepth > 0 && !isCompilerExceptionExit) {
+          activeSyncDepth--;
+          indentLevel = Math.max(2, indentLevel - 1);
+          emit('}');
+        }
+      }
       // 8. Check-cast & instance-of
       else if (op === 0x1f) {
         const tName = descriptorToJavaType(ins.refObj, importsSet);
@@ -1570,6 +1616,30 @@
         const arrType = descriptorToJavaType(ins.refObj, importsSet).replace(/\[\]$/, '');
         setReg(ins.vA, `new ${arrType}[${getRegExpr(ins.vB)}]`, `${arrType}[]`);
       }
+      else if (op === 0x24 || op === 0x25) {
+        const arrType = descriptorToJavaType(ins.refObj, importsSet);
+        const elemList = (ins.args || []).map(r => getRegExpr(r));
+        lastResult = { expr: `new ${arrType}{ ${elemList.join(', ')} }`, type: arrType, isStringBuilder: false };
+      }
+      else if (op === 0x26) {
+        // fill-array-data vAA, +payload_offset
+        const payload = method.code.payloadMap.get(ins.target);
+        const baseType = getRegType(ins.vA).replace(/\[\]$/, '') || 'byte';
+        if (payload && payload.elements && payload.elements.length > 0) {
+          const formattedElems = payload.elements.map(v =>
+            payload.elemWidth === 1 ? `0x${(v & 0xff).toString(16).padStart(2, '0')}` : String(v)
+          );
+          const litArr = `new ${baseType}[]{ ${formattedElems.join(', ')}${payload.size > payload.elements.length ? ', ...' : ''} }`;
+          const varName = `v${ins.vA}`;
+          if (!declaredVars.has(varName)) {
+            declaredVars.add(varName);
+            emit(`${baseType}[] ${varName} = ${litArr};`);
+          } else {
+            emit(`${varName} = ${litArr};`);
+          }
+          setReg(ins.vA, varName, `${baseType}[]`);
+        }
+      }
       // 10. Throw
       else if (op === 0x27) {
         emit(`throw ${getRegExpr(ins.vA)};`);
@@ -1578,45 +1648,62 @@
       else if (op >= 0x2d && op <= 0x31) {
         setReg(ins.vA, `Long.compare(${getRegExpr(ins.vB)}, ${getRegExpr(ins.vC)})`, 'int');
       }
-      // 12. Conditional branches (if-* and if-*z)
+      // 12. Conditional branches (if-* and if-*z) with Short-Circuit (&& / ||) Folding
       else if (op >= 0x32 && op <= 0x3d) {
-        const isZeroCmp = op >= 0x38;
-        const lhs = getRegExpr(ins.vA);
-        const lhsType = getRegType(ins.vA);
-        let rhs = isZeroCmp ? '0' : getRegExpr(ins.vB);
-        if (isZeroCmp && lhsType === 'boolean') rhs = 'false';
-        else if (isZeroCmp && !['int', 'long', 'float', 'double', 'byte', 'short', 'char'].includes(lhsType)) rhs = 'null';
-
         if (activeLoopLatchPc !== -1 && ins.target > activeLoopLatchPc) {
           // Loop exit condition jumping past the loop latch
-          const opSym = DIRECT_COND[name] || '==';
-          emit(`if (${lhs} ${opSym} ${rhs}) break;`);
+          const condStr = formatCondExpr(ins, false);
+          emit(`if (${condStr}) break;`);
         } else if (ins.target > ins.pc) {
-          const opSym = INVERT_COND[name] || '!=';
-          let condStr = `${lhs} ${opSym} ${rhs}`;
-          if (lhsType === 'boolean' && rhs === 'false') {
-            condStr = opSym === '!=' ? lhs : `!${lhs}`;
+          const condParts = [formatCondExpr(ins, true)];
+          let joinOp = '&&';
+          let finalTarget = ins.target;
+
+          // Fold consecutive short-circuit conditional branches targeting the same exit (&&) or body (||)
+          while (i + 1 < insns.length) {
+            const nextBranch = insns[i + 1];
+            if (nextBranch.opcode >= 0x32 && nextBranch.opcode <= 0x3d && !closeIndentAtPc.has(nextBranch.pc)) {
+              if (nextBranch.target === finalTarget) {
+                condParts.push(`(${formatCondExpr(nextBranch, true)})`);
+                joinOp = '&&';
+                i++;
+                continue;
+              } else if (i + 2 < insns.length && ins.target === insns[i + 2].pc && nextBranch.target > nextBranch.pc) {
+                condParts[0] = `(${formatCondExpr(ins, false)})`;
+                condParts.push(`(${formatCondExpr(nextBranch, true)})`);
+                joinOp = '||';
+                finalTarget = nextBranch.target;
+                i++;
+                break;
+              }
+            }
+            break;
           }
-          emit(`if (${condStr}) {`);
+
+          const combinedCond = condParts.length > 1
+            ? condParts.map(p => p.startsWith('(') ? p : `(${p})`).join(` ${joinOp} `)
+            : condParts[0];
+
+          emit(`if (${combinedCond}) {`);
           indentLevel++;
 
-          // Check if the instruction right before target is an unconditional goto (meaning an else branch!)
-          const targetIdx = insnIdxByPc.get(ins.target);
+          // Check if the instruction right before finalTarget is an unconditional goto (meaning an else branch!)
+          const targetIdx = insnIdxByPc.get(finalTarget);
           if (targetIdx != null && targetIdx > 0) {
             const prevIns = insns[targetIdx - 1];
-            if (prevIns.opcode >= 0x28 && prevIns.opcode <= 0x2a && prevIns.target > ins.target) {
-              pushCloseAt(ins.target, { type: 'else' });
+            if (prevIns.opcode >= 0x28 && prevIns.opcode <= 0x2a && prevIns.target > finalTarget) {
+              pushCloseAt(finalTarget, { type: 'else' });
               pushCloseAt(prevIns.target, { type: 'close' });
             } else {
-              pushCloseAt(ins.target, { type: 'close' });
+              pushCloseAt(finalTarget, { type: 'close' });
             }
           } else {
-            pushCloseAt(ins.target, { type: 'close' });
+            pushCloseAt(finalTarget, { type: 'close' });
           }
         } else {
           // Backward branch or loop exit
-          const opSym = DIRECT_COND[name] || '==';
-          emit(`if (!(${lhs} ${opSym} ${rhs})) break;`);
+          const condStr = formatCondExpr(ins, false);
+          emit(`if (!(${condStr})) break;`);
         }
       }
       // 13. Switch statements
@@ -1796,6 +1883,17 @@
         }
         if (!assignVarIfLoopMutated(ins.vA, binExpr, resType)) {
           setReg(ins.vA, binExpr, resType);
+        }
+      }
+      // 20. Java 8+ Dynamic CallSite / Lambda / MethodHandle (invoke-polymorphic / invoke-custom)
+      else if (op >= 0xfa && op <= 0xfd) {
+        const dynArgs = (ins.args || []).map(r => getRegExpr(r));
+        const lambdaExpr = `/* invokedynamic callsite #${ins.refIndex || 0} */ (${dynArgs.join(', ')}) -> { /* lambda body */ }`;
+        const nextIns = i + 1 < insns.length ? insns[i + 1] : null;
+        if (nextIns && nextIns.opcode >= 0x0a && nextIns.opcode <= 0x0c) {
+          lastResult = { expr: lambdaExpr, type: 'Object', isStringBuilder: false };
+        } else {
+          emit(`${lambdaExpr};`);
         }
       }
 

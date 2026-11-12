@@ -104,6 +104,9 @@ function safeWriteFile(baseDir, relativeFile, content) {
       const soBytes = await entry.extract();
       const parsedElf = globalThis.ArgonElfSecurity.parseElfBinary(soBytes, entry.name);
       parsedElf.disassembly = globalThis.ArgonAdvanced.disassembleElfTextSection(soBytes, parsedElf);
+      parsedElf.pseudoC = globalThis.ArgonAdvanced.decompileArm64ToPseudoC(soBytes, parsedElf);
+      const baseSo = entry.name.split('/').pop().replace(/[^A-Za-z0-9_.-]/g, '_');
+      safeWriteFile(outDir, path.join('native_pseudo_c', baseSo + '.c'), parsedElf.pseudoC);
       elfFiles.push(parsedElf);
     }
   }
@@ -123,6 +126,8 @@ function safeWriteFile(baseDir, relativeFile, content) {
 
   const taintFlows = globalThis.ArgonAdvanced.runTaintAnalysis(dexFiles);
   const cryptoConstants = globalThis.ArgonAdvanced.scanCryptographicConstants(apk.entries, apk.rawBytes);
+  const fridaScript = globalThis.ArgonAdvanced.generateFridaHookScript(apk, manifestInfo, dexFiles, elfFiles, taintFlows, deobfData);
+  safeWriteFile(outDir, 'frida_argon_hooks.js', fridaScript);
 
   const audit = globalThis.ArgonElfSecurity.runStaticSecurityAudit(
     manifestInfo, dexFiles, elfFiles, apk.signingBlock, apk.certificates
@@ -145,6 +150,7 @@ function safeWriteFile(baseDir, relativeFile, content) {
     deobfuscation: {
       obfuscationRatio: deobfData.obfuscationRatio,
       renames: deobfData.renameReasons,
+      decryptedStrings: deobfData.decryptedStrings,
       fingerprints: deobfData.fingerprints
     },
     cryptoConstants,
@@ -154,7 +160,8 @@ function safeWriteFile(baseDir, relativeFile, content) {
       hardening: e.hardening,
       jniMethods: e.jniMethods,
       disassemblyCount: (e.disassembly || []).length,
-      disassembly: e.disassembly
+      disassembly: e.disassembly,
+      pseudoC: e.pseudoC
     })),
     securityAudit: audit
   };
