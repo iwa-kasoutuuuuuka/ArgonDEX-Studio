@@ -1,0 +1,789 @@
+{
+  "fileName": "ArgonVault_v2.4.1_sample.apk",
+  "fileSize": 12660,
+  "sha256": "9accff1f0a8c63b6c0682d43a2c353f85ceec20611282d3df4c9f9f6592f77eb",
+  "entropy": 4.193,
+  "signingBlock": {
+    "present": true,
+    "blockStart": 12051,
+    "blockSize": 120,
+    "schemes": [
+      {
+        "id": "0x7109871a",
+        "name": "APK Signature Scheme v2",
+        "size": 32,
+        "offset": 12071
+      },
+      {
+        "id": "0xf05368c0",
+        "name": "APK Signature Scheme v3",
+        "size": 32,
+        "offset": 12115
+      }
+    ],
+    "v2Signed": true,
+    "v3Signed": true
+  },
+  "certificates": [
+    {
+      "file": "META-INF/CERT.RSA",
+      "sha256": "22d9daafa94be263424ce567d04020d1c0084581d219891450dab0fa6e707312",
+      "subjectOrIssuer": "CN=ArgonVault Release Engineering, O=Argon Security Labs Inc., C=JP",
+      "algorithms": [
+        "SHA256withRSA"
+      ],
+      "validFrom": "2026-01-01 00:00:00 UTC",
+      "validUntil": "2036-01-01 00:00:00 UTC",
+      "size": 120
+    }
+  ],
+  "manifest": {
+    "packageName": "com.argon.vault",
+    "versionCode": "20401",
+    "versionName": "2.4.1-argon",
+    "minSdkVersion": "26",
+    "targetSdkVersion": "34",
+    "compileSdkVersion": "34",
+    "appLabel": "@string/app_name",
+    "appIcon": "",
+    "applicationClass": null,
+    "debuggable": true,
+    "allowBackup": true,
+    "usesCleartextTraffic": true,
+    "networkSecurityConfig": null,
+    "extractNativeLibs": true,
+    "permissions": [
+      {
+        "name": "android.permission.INTERNET",
+        "level": "normal",
+        "description": "Full network socket access (HTTP/HTTPS/TCP/UDP)."
+      },
+      {
+        "name": "android.permission.ACCESS_NETWORK_STATE",
+        "level": "normal",
+        "description": "View network connectivity status."
+      },
+      {
+        "name": "android.permission.USE_BIOMETRIC",
+        "level": "normal",
+        "description": "Use hardware biometric authentication prompt."
+      },
+      {
+        "name": "android.permission.READ_EXTERNAL_STORAGE",
+        "level": "dangerous",
+        "description": "Read shared external storage files."
+      },
+      {
+        "name": "android.permission.CAMERA",
+        "level": "dangerous",
+        "description": "Capture photos and video from hardware camera."
+      }
+    ],
+    "activities": [
+      {
+        "name": "com.argon.vault.MainActivity",
+        "shortName": "com.argon.vault.MainActivity",
+        "exported": true,
+        "explicitExported": true,
+        "permission": null,
+        "enabled": true,
+        "intentFilters": [
+          {
+            "actions": [
+              "android.intent.action.MAIN"
+            ],
+            "categories": [
+              "android.intent.category.LAUNCHER"
+            ],
+            "data": []
+          },
+          {
+            "actions": [
+              "android.intent.action.VIEW"
+            ],
+            "categories": [
+              "android.intent.category.DEFAULT",
+              "android.intent.category.BROWSABLE"
+            ],
+            "data": [
+              {
+                "scheme": "argonvault",
+                "host": "unlock",
+                "path": "/token",
+                "mimeType": ""
+              }
+            ]
+          }
+        ],
+        "isMainLauncher": true,
+        "launchMode": "standard"
+      }
+    ],
+    "services": [
+      {
+        "name": "com.argon.vault.net.VaultSyncService",
+        "shortName": "com.argon.vault.net.VaultSyncService",
+        "exported": true,
+        "explicitExported": true,
+        "permission": null,
+        "enabled": true,
+        "intentFilters": [],
+        "isMainLauncher": false
+      }
+    ],
+    "receivers": [],
+    "providers": [
+      {
+        "name": "com.argon.vault.db.VaultContentProvider",
+        "shortName": "com.argon.vault.db.VaultContentProvider",
+        "exported": true,
+        "explicitExported": true,
+        "permission": null,
+        "enabled": true,
+        "intentFilters": [],
+        "isMainLauncher": false,
+        "authorities": "com.argon.vault.provider",
+        "grantUriPermissions": true
+      }
+    ],
+    "deepLinks": [
+      {
+        "component": "com.argon.vault.MainActivity",
+        "componentType": "activity",
+        "uri": "argonvault://unlock/token",
+        "browsable": true
+      }
+    ]
+  },
+  "classes": [
+    {
+      "fullName": "com.argon.vault.MainActivity",
+      "methods": 4,
+      "javaPath": "src\\main\\java\\com\\argon\\vault\\MainActivity.java"
+    },
+    {
+      "fullName": "com.argon.vault.NativeBridge",
+      "methods": 4,
+      "javaPath": "src\\main\\java\\com\\argon\\vault\\NativeBridge.java"
+    },
+    {
+      "fullName": "com.argon.vault.crypto.CryptoEngine",
+      "methods": 3,
+      "javaPath": "src\\main\\java\\com\\argon\\vault\\crypto\\CryptoEngine.java"
+    },
+    {
+      "fullName": "com.argon.vault.db.VaultDatabase",
+      "methods": 2,
+      "javaPath": "src\\main\\java\\com\\argon\\vault\\db\\VaultDatabase.java"
+    },
+    {
+      "fullName": "com.argon.vault.net.ApiClient",
+      "methods": 2,
+      "javaPath": "src\\main\\java\\com\\argon\\vault\\net\\ApiClient.java"
+    },
+    {
+      "fullName": "com.argon.vault.obf.a",
+      "methods": 3,
+      "javaPath": "src\\main\\java\\com\\argon\\vault\\obf\\a.java"
+    }
+  ],
+  "taintFlows": [
+    {
+      "id": "TF-001",
+      "severity": "HIGH",
+      "vulnerability": "Cross-Site Scripting / Arbitrary Navigation (CWE-79)",
+      "className": "com.argon.vault.MainActivity",
+      "methodName": "initWebViewPortal",
+      "source": "Cleartext HTTP Endpoint (\"http://api.argonvault.internal/v2/sy...\")",
+      "sink": "WebView.loadUrl() Sink (WebView.loadUrl)",
+      "sinkPc": "0x000f",
+      "steps": [
+        "[0x000d] const-string loads cleartext HTTP URL into v1",
+        "[0x000f] 🚨 SINK REACHED: Tainted register passed to Landroid/webkit/WebView;->loadUrl(Ljava/lang/String;)V"
+      ]
+    },
+    {
+      "id": "TF-002",
+      "severity": "HIGH",
+      "vulnerability": "Unvalidated Input to Native TEE Key Derivation (CWE-20 / MASVS-CRYPTO-1)",
+      "className": "com.argon.vault.crypto.CryptoEngine",
+      "methodName": "encryptPayload",
+      "source": "Method Parameter arg0 (CryptoEngine.encryptPayload)",
+      "sink": "JNI Hardware Key Derivation Sink (NativeBridge.deriveHardwareKey)",
+      "sinkPc": "0x000e",
+      "steps": [
+        "[Entry] Parameter p1 (arg0: String) enters CryptoEngine.encryptPayload()",
+        "[0x000e] 🚨 SINK REACHED: Tainted register passed to Lcom/argon/vault/NativeBridge;->deriveHardwareKey(Ljava/lang/String;I)[B"
+      ]
+    },
+    {
+      "id": "TF-003",
+      "severity": "CRITICAL",
+      "vulnerability": "SQL Injection (CWE-89)",
+      "className": "com.argon.vault.db.VaultDatabase",
+      "methodName": "queryVaultSecret",
+      "source": "Hardcoded Credential (\"SELECT secret_blob FROM vaul...\")",
+      "sink": "SQLite rawQuery() Sink (SQLiteDatabase.rawQuery)",
+      "sinkPc": "0x001a",
+      "steps": [
+        "[0x0005] const-string loads secret into v1",
+        "[0x0007] Taint propagated via StringBuilder.append()",
+        "[0x000a] move-result-object: captures tainted result into v0",
+        "[0x000b] Taint propagated via StringBuilder.append()",
+        "[0x000e] move-result-object: captures tainted result into v0",
+        "[0x0011] Taint propagated via StringBuilder.append()",
+        "[0x0014] move-result-object: captures tainted result into v0",
+        "[0x0015] Taint propagated via StringBuilder.toString()",
+        "[0x0018] move-result-object: captures tainted result into v0",
+        "[0x001a] 🚨 SINK REACHED: Tainted register passed to Landroid/database/sqlite/SQLiteDatabase;->rawQuery(Ljava/lang/String;Ljava/lang/String;)Landroid/database/Cursor;"
+      ]
+    },
+    {
+      "id": "TF-004",
+      "severity": "HIGH",
+      "vulnerability": "Unvalidated Input to Native TEE Key Derivation (CWE-20 / MASVS-CRYPTO-1)",
+      "className": "com.argon.vault.obf.a",
+      "methodName": "a",
+      "source": "Method Parameter arg0 (a.a)",
+      "sink": "JNI Hardware Key Derivation Sink (NativeBridge.deriveHardwareKey)",
+      "sinkPc": "0x0008",
+      "steps": [
+        "[Entry] Parameter p1 (arg0: String) enters a.a()",
+        "[0x0008] 🚨 SINK REACHED: Tainted register passed to Lcom/argon/vault/NativeBridge;->deriveHardwareKey(Ljava/lang/String;I)[B"
+      ]
+    }
+  ],
+  "deobfuscation": {
+    "obfuscationRatio": 22,
+    "renames": [
+      {
+        "kind": "CLASS",
+        "original": "com.argon.vault.obf.a",
+        "renamed": "com.argon.vault.obf.CryptoTokenHelper",
+        "reason": "Invokes javax.crypto.Cipher / MessageDigest APIs"
+      },
+      {
+        "kind": "FIELD",
+        "original": "a.a",
+        "renamed": "mString_a",
+        "reason": "Typed field inference (Ljava/lang/String;)"
+      },
+      {
+        "kind": "FIELD",
+        "original": "a.b",
+        "renamed": "mint_b",
+        "reason": "Typed field inference (I)"
+      },
+      {
+        "kind": "METHOD",
+        "original": "a.a()",
+        "renamed": "transformCrypto_a()",
+        "reason": "Calls cryptographic transformation APIs"
+      },
+      {
+        "kind": "METHOD",
+        "original": "a.b()",
+        "renamed": "computeInt_b()",
+        "reason": "Integer computation method"
+      }
+    ],
+    "fingerprints": [
+      {
+        "name": "R8 / ProGuard Identifier Minification",
+        "type": "Obfuscator",
+        "confidence": "22% Symbol Density"
+      },
+      {
+        "name": "Android NDK Native JNI (ARM64 (AArch64))",
+        "type": "Native Toolchain",
+        "confidence": "Confirmed"
+      },
+      {
+        "name": "Android apksigner (Scheme v2 + v3)",
+        "type": "Build / Signing",
+        "confidence": "Confirmed"
+      }
+    ]
+  },
+  "cryptoConstants": [
+    {
+      "algorithm": "AES-128/192/256",
+      "description": "AES Rijndael Forward S-Box (256-byte lookup table)",
+      "archiveOffset": "0x00002b8c",
+      "previewHex": "63 7c 77 7b f2 6b 6f c5 ..."
+    },
+    {
+      "algorithm": "ChaCha20 Stream Cipher",
+      "description": "ChaCha20 / Salsa20 Sigma Constant (\"expand 32-byte k\")",
+      "archiveOffset": "0x00002b9c",
+      "previewHex": "65 78 70 61 6e 64 20 33 ..."
+    }
+  ],
+  "nativeLibraries": [
+    {
+      "fileName": "lib/arm64-v8a/libnative-vault.so",
+      "architecture": "ARM64 (AArch64)",
+      "hardening": {
+        "pie": true,
+        "nx": true,
+        "relro": "Full RELRO",
+        "stackCanary": false,
+        "fortify": false
+      },
+      "jniMethods": [
+        {
+          "isJni": true,
+          "type": "lifecycle",
+          "className": "(Global VM)",
+          "methodName": "JNI_OnLoad",
+          "symbol": "JNI_OnLoad",
+          "address": "0x00001000",
+          "library": "lib/arm64-v8a/libnative-vault.so"
+        },
+        {
+          "isJni": true,
+          "type": "method",
+          "className": "com.argon.vault.NativeBridge",
+          "methodName": "deriveHardwareKey",
+          "symbol": "Java_com_argon_vault_NativeBridge_deriveHardwareKey",
+          "address": "0x00001010",
+          "library": "lib/arm64-v8a/libnative-vault.so"
+        },
+        {
+          "isJni": true,
+          "type": "method",
+          "className": "com.argon.vault.NativeBridge",
+          "methodName": "verifyDeviceIntegrity",
+          "symbol": "Java_com_argon_vault_NativeBridge_verifyDeviceIntegrity",
+          "address": "0x00001030",
+          "library": "lib/arm64-v8a/libnative-vault.so"
+        }
+      ],
+      "disassemblyCount": 25,
+      "disassembly": [
+        {
+          "label": "JNI_OnLoad",
+          "vaddr": "0x00001000",
+          "fileOffset": "0x02d8",
+          "hexBytes": "fd 7b bf a9",
+          "mnemonic": "stp",
+          "operands": "x29, x30, [xzr/sp]",
+          "comment": "Store pair (prologue)"
+        },
+        {
+          "label": null,
+          "vaddr": "0x00001004",
+          "fileOffset": "0x02dc",
+          "hexBytes": "c0 00 80 52",
+          "mnemonic": "movz",
+          "operands": "w0, #0x6",
+          "comment": "=6"
+        },
+        {
+          "label": null,
+          "vaddr": "0x00001008",
+          "fileOffset": "0x02e0",
+          "hexBytes": "20 00 a0 72",
+          "mnemonic": "movk",
+          "operands": "w0, #0x1, lsl #16",
+          "comment": ""
+        },
+        {
+          "label": null,
+          "vaddr": "0x0000100c",
+          "fileOffset": "0x02e4",
+          "hexBytes": "c0 03 5f d6",
+          "mnemonic": "ret",
+          "operands": "x30",
+          "comment": "Subroutine return"
+        },
+        {
+          "label": "Java_com_argon_vault_NativeBridge_deriveHardwareKey",
+          "vaddr": "0x00001010",
+          "fileOffset": "0x02e8",
+          "hexBytes": "fd 7b bf a9",
+          "mnemonic": "stp",
+          "operands": "x29, x30, [xzr/sp]",
+          "comment": "Store pair (prologue)"
+        },
+        {
+          "label": null,
+          "vaddr": "0x00001014",
+          "fileOffset": "0x02ec",
+          "hexBytes": "f3 03 00 aa",
+          "mnemonic": "mov",
+          "operands": "x19, x0",
+          "comment": "ORR alias"
+        },
+        {
+          "label": null,
+          "vaddr": "0x00001018",
+          "fileOffset": "0x02f0",
+          "hexBytes": "f4 03 02 aa",
+          "mnemonic": "mov",
+          "operands": "x20, x2",
+          "comment": "ORR alias"
+        },
+        {
+          "label": null,
+          "vaddr": "0x0000101c",
+          "fileOffset": "0x02f4",
+          "hexBytes": "ff 83 00 91",
+          "mnemonic": "add",
+          "operands": "xzr/sp, xzr/sp, #0x20",
+          "comment": "32"
+        },
+        {
+          "label": null,
+          "vaddr": "0x00001020",
+          "fileOffset": "0x02f8",
+          "hexBytes": "60 02 14 ca",
+          "mnemonic": "eor",
+          "operands": "x0, x19, x20",
+          "comment": ""
+        },
+        {
+          "label": null,
+          "vaddr": "0x00001024",
+          "fileOffset": "0x02fc",
+          "hexBytes": "04 00 00 94",
+          "mnemonic": "bl",
+          "operands": "0x1034",
+          "comment": "Branch with Link (call)"
+        },
+        {
+          "label": null,
+          "vaddr": "0x00001028",
+          "fileOffset": "0x0300",
+          "hexBytes": "fd 7b c1 a8",
+          "mnemonic": "ldp",
+          "operands": "x29, x30, [xzr/sp]",
+          "comment": "Load pair (epilogue)"
+        },
+        {
+          "label": null,
+          "vaddr": "0x0000102c",
+          "fileOffset": "0x0304",
+          "hexBytes": "c0 03 5f d6",
+          "mnemonic": "ret",
+          "operands": "x30",
+          "comment": "Subroutine return"
+        },
+        {
+          "label": "Java_com_argon_vault_NativeBridge_verifyDeviceIntegrity",
+          "vaddr": "0x00001030",
+          "fileOffset": "0x0308",
+          "hexBytes": "5f 39 05 71",
+          "mnemonic": "sub",
+          "operands": "wzr, w10, #0x14e",
+          "comment": "334"
+        },
+        {
+          "label": null,
+          "vaddr": "0x00001034",
+          "fileOffset": "0x030c",
+          "hexBytes": "20 00 80 52",
+          "mnemonic": "movz",
+          "operands": "w0, #0x1",
+          "comment": "=1"
+        },
+        {
+          "label": null,
+          "vaddr": "0x00001038",
+          "fileOffset": "0x0310",
+          "hexBytes": "00 04 00 11",
+          "mnemonic": "add",
+          "operands": "w0, w0, #0x1",
+          "comment": "1"
+        },
+        {
+          "label": null,
+          "vaddr": "0x0000103c",
+          "fileOffset": "0x0314",
+          "hexBytes": "00 04 00 51",
+          "mnemonic": "sub",
+          "operands": "w0, w0, #0x1",
+          "comment": "1"
+        },
+        {
+          "label": null,
+          "vaddr": "0x00001040",
+          "fileOffset": "0x0318",
+          "hexBytes": "c0 03 5f d6",
+          "mnemonic": "ret",
+          "operands": "x30",
+          "comment": "Subroutine return"
+        },
+        {
+          "label": null,
+          "vaddr": "0x00001044",
+          "fileOffset": "0x031c",
+          "hexBytes": "63 7c 77 7b",
+          "mnemonic": ".word",
+          "operands": "0x7b777c63",
+          "comment": "AArch64 instruction word"
+        },
+        {
+          "label": null,
+          "vaddr": "0x00001048",
+          "fileOffset": "0x0320",
+          "hexBytes": "f2 6b 6f c5",
+          "mnemonic": ".word",
+          "operands": "0xc56f6bf2",
+          "comment": "AArch64 instruction word"
+        },
+        {
+          "label": null,
+          "vaddr": "0x0000104c",
+          "fileOffset": "0x0324",
+          "hexBytes": "30 01 67 2b",
+          "mnemonic": "add",
+          "operands": "w16, w9, w7",
+          "comment": ""
+        },
+        {
+          "label": null,
+          "vaddr": "0x00001050",
+          "fileOffset": "0x0328",
+          "hexBytes": "fe d7 ab 76",
+          "mnemonic": ".word",
+          "operands": "0x76abd7fe",
+          "comment": "AArch64 instruction word"
+        },
+        {
+          "label": null,
+          "vaddr": "0x00001054",
+          "fileOffset": "0x032c",
+          "hexBytes": "65 78 70 61",
+          "mnemonic": ".word",
+          "operands": "0x61707865",
+          "comment": "AArch64 instruction word"
+        },
+        {
+          "label": null,
+          "vaddr": "0x00001058",
+          "fileOffset": "0x0330",
+          "hexBytes": "6e 64 20 33",
+          "mnemonic": ".word",
+          "operands": "0x3320646e",
+          "comment": "AArch64 instruction word"
+        },
+        {
+          "label": null,
+          "vaddr": "0x0000105c",
+          "fileOffset": "0x0334",
+          "hexBytes": "32 2d 62 79",
+          "mnemonic": "ldr",
+          "operands": "w18, [x9, #0x222c]",
+          "comment": ""
+        },
+        {
+          "label": null,
+          "vaddr": "0x00001060",
+          "fileOffset": "0x0338",
+          "hexBytes": "74 65 20 6b",
+          "mnemonic": "sub",
+          "operands": "w20, w11, w0",
+          "comment": ""
+        }
+      ]
+    }
+  ],
+  "securityAudit": {
+    "score": 0,
+    "grade": "F",
+    "findings": [
+      {
+        "id": "F-001",
+        "severity": "CRITICAL",
+        "category": "Manifest / Build Config",
+        "title": "Application is Debuggable (android:debuggable=\"true\")",
+        "description": "Enabling android:debuggable in production allows local attackers or untrusted apps with shell access to attach JDWP debuggers, dump memory, and execute arbitrary code in the app context.",
+        "location": {
+          "file": "AndroidManifest.xml",
+          "target": "<application android:debuggable=\"true\">"
+        },
+        "cwe": "CWE-489 / MASVS-RESILIENCE-2",
+        "remediation": "Set android:debuggable=\"false\" in release build variants."
+      },
+      {
+        "id": "F-002",
+        "severity": "HIGH",
+        "category": "Network Security",
+        "title": "Cleartext HTTP Traffic Permitted (android:usesCleartextTraffic=\"true\")",
+        "description": "The application explicitly permits unencrypted HTTP network connections, exposing sensitive API traffic to Man-in-the-Middle (MitM) interception.",
+        "location": {
+          "file": "AndroidManifest.xml",
+          "target": "<application android:usesCleartextTraffic=\"true\">"
+        },
+        "cwe": "CWE-319 / MASVS-NETWORK-1",
+        "remediation": "Disable usesCleartextTraffic and enforce TLS 1.2/1.3 via network_security_config.xml."
+      },
+      {
+        "id": "F-003",
+        "severity": "MEDIUM",
+        "category": "Data Storage",
+        "title": "ADB Backup Enabled (android:allowBackup=\"true\")",
+        "description": "Allowing full application data backup via adb allows anyone with USB debugging access to extract SharedPreferences, SQLite databases, and tokens.",
+        "location": {
+          "file": "AndroidManifest.xml",
+          "target": "<application android:allowBackup=\"true\">"
+        },
+        "cwe": "CWE-530 / MASVS-STORAGE-2",
+        "remediation": "Set android:allowBackup=\"false\" or configure restrictive <data-extraction-rules>."
+      },
+      {
+        "id": "F-004",
+        "severity": "HIGH",
+        "category": "IPC / Component Exposure",
+        "title": "Exported Service Without Permission Restriction: com.argon.vault.net.VaultSyncService",
+        "description": "Component \"com.argon.vault.net.VaultSyncService\" is exported and accessible to any third-party app on the device without requiring a custom or signature permission.",
+        "location": {
+          "file": "AndroidManifest.xml",
+          "className": "com.argon.vault.net.VaultSyncService",
+          "target": "com.argon.vault.net.VaultSyncService"
+        },
+        "cwe": "CWE-926 / MASVS-PLATFORM-1",
+        "remediation": "Set android:exported=\"false\" if internal, or enforce a signature-level android:permission."
+      },
+      {
+        "id": "F-005",
+        "severity": "HIGH",
+        "category": "IPC / Component Exposure",
+        "title": "Exported ContentProvider Without Permission Restriction: com.argon.vault.db.VaultContentProvider",
+        "description": "Component \"com.argon.vault.db.VaultContentProvider\" is exported and accessible to any third-party app on the device without requiring a custom or signature permission.",
+        "location": {
+          "file": "AndroidManifest.xml",
+          "className": "com.argon.vault.db.VaultContentProvider",
+          "target": "com.argon.vault.db.VaultContentProvider"
+        },
+        "cwe": "CWE-926 / MASVS-PLATFORM-1",
+        "remediation": "Set android:exported=\"false\" if internal, or enforce a signature-level android:permission."
+      },
+      {
+        "id": "F-006",
+        "severity": "MEDIUM",
+        "category": "Network Security",
+        "title": "Hardcoded Cleartext HTTP Endpoint: http://api.argonvault.internal/v2/sync?token=",
+        "description": "Found unencrypted HTTP URL \"http://api.argonvault.internal/v2/sync?token=\" in classes.dex string pool.",
+        "location": {
+          "file": "classes.dex",
+          "target": "http://api.argonvault.internal/v2/sync?token="
+        },
+        "cwe": "CWE-319 / MASVS-NETWORK-1",
+        "remediation": "Migrate endpoint to HTTPS (TLS)."
+      },
+      {
+        "id": "F-007",
+        "severity": "MEDIUM",
+        "category": "WebView Security",
+        "title": "WebView JavaScript Enabled in MainActivity.initWebViewPortal()",
+        "description": "Enabling JavaScript in WebView can lead to XSS or bridge exploitation if untrusted URLs or intent extras are loaded.",
+        "location": {
+          "file": "classes.dex",
+          "className": "com.argon.vault.MainActivity",
+          "methodName": "initWebViewPortal",
+          "target": "com.argon.vault.MainActivity.initWebViewPortal"
+        },
+        "cwe": "CWE-79 / MASVS-PLATFORM-2",
+        "remediation": "Restrict WebView navigation to trusted HTTPS origins and disable file/universal access."
+      },
+      {
+        "id": "F-008",
+        "severity": "HIGH",
+        "category": "WebView Security",
+        "title": "WebView Native JavaScript Bridge Exposed in MainActivity.initWebViewPortal()",
+        "description": "addJavascriptInterface exposes Java object methods to JavaScript executing inside the WebView.",
+        "location": {
+          "file": "classes.dex",
+          "className": "com.argon.vault.MainActivity",
+          "methodName": "initWebViewPortal",
+          "target": "com.argon.vault.MainActivity.initWebViewPortal"
+        },
+        "cwe": "CWE-749 / MASVS-PLATFORM-2",
+        "remediation": "Ensure @JavascriptInterface methods validate caller origin and only load pinned HTTPS content."
+      },
+      {
+        "id": "F-009",
+        "severity": "HIGH",
+        "category": "Cryptography",
+        "title": "Insecure Cipher Mode (AES/ECB/PKCS5Padding) in CryptoEngine.encryptPayload()",
+        "description": "ECB mode or DES cipher (\"AES/ECB/PKCS5Padding\") lacks semantic security and leaks plaintext block patterns.",
+        "location": {
+          "file": "classes.dex",
+          "className": "com.argon.vault.crypto.CryptoEngine",
+          "methodName": "encryptPayload",
+          "target": "com.argon.vault.crypto.CryptoEngine.encryptPayload"
+        },
+        "cwe": "CWE-327 / MASVS-CRYPTO-1",
+        "remediation": "Use AES/GCM/NoPadding with a 96-bit random IV and 128-bit authentication tag."
+      },
+      {
+        "id": "F-010",
+        "severity": "MEDIUM",
+        "category": "Cryptography",
+        "title": "Weak Hash Algorithm (MD5) in CryptoEngine.encryptPayload()",
+        "description": "Cryptographically broken digest \"MD5\" used in com.argon.vault.crypto.CryptoEngine.encryptPayload().",
+        "location": {
+          "file": "classes.dex",
+          "className": "com.argon.vault.crypto.CryptoEngine",
+          "methodName": "encryptPayload",
+          "target": "com.argon.vault.crypto.CryptoEngine.encryptPayload"
+        },
+        "cwe": "CWE-328 / MASVS-CRYPTO-1",
+        "remediation": "Use SHA-256, SHA-384, or SHA-512."
+      },
+      {
+        "id": "F-011",
+        "severity": "HIGH",
+        "category": "SQL Injection",
+        "title": "Raw SQL Query Execution in VaultDatabase.queryVaultSecret()",
+        "description": "Direct invocation of rawQuery() detected in com.argon.vault.db.VaultDatabase.queryVaultSecret(). If user input is concatenated into the SQL string, local SQL injection is possible.",
+        "location": {
+          "file": "classes.dex",
+          "className": "com.argon.vault.db.VaultDatabase",
+          "methodName": "queryVaultSecret",
+          "target": "com.argon.vault.db.VaultDatabase.queryVaultSecret"
+        },
+        "cwe": "CWE-89 / MASVS-CODE-4",
+        "remediation": "Use parameterized queries with \"?\" placeholders or SQLiteStatement bindings."
+      },
+      {
+        "id": "F-012",
+        "severity": "HIGH",
+        "category": "Cryptography",
+        "title": "Insecure Cipher Mode (AES/ECB/PKCS5Padding) in a.<init>()",
+        "description": "ECB mode or DES cipher (\"AES/ECB/PKCS5Padding\") lacks semantic security and leaks plaintext block patterns.",
+        "location": {
+          "file": "classes.dex",
+          "className": "com.argon.vault.obf.a",
+          "methodName": "<init>",
+          "target": "com.argon.vault.obf.a.<init>"
+        },
+        "cwe": "CWE-327 / MASVS-CRYPTO-1",
+        "remediation": "Use AES/GCM/NoPadding with a 96-bit random IV and 128-bit authentication tag."
+      },
+      {
+        "id": "F-013",
+        "severity": "LOW",
+        "category": "Native Binary Hardening",
+        "title": "Missing Stack Canary in lib/arm64-v8a/libnative-vault.so",
+        "description": "Native library lib/arm64-v8a/libnative-vault.so (ARM64 (AArch64)) does not reference __stack_chk_fail stack protector symbols.",
+        "location": {
+          "file": "lib/arm64-v8a/libnative-vault.so",
+          "target": "lib/arm64-v8a/libnative-vault.so"
+        },
+        "cwe": "CWE-121 / MASVS-CODE-3",
+        "remediation": "Compile NDK C/C++ code with -fstack-protector-strong."
+      }
+    ],
+    "extractedUrls": [
+      {
+        "url": "http://api.argonvault.internal/v2/sync?token=",
+        "dex": "classes.dex",
+        "cleartext": true
+      }
+    ],
+    "extractedSecrets": []
+  }
+}

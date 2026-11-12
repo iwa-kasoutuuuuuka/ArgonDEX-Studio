@@ -1,0 +1,74 @@
+[
+  {
+    "id": 2130771968,
+    "idHex": "0x7f010000",
+    "packageName": "com.argon.vault",
+    "type": "string",
+    "name": "app_name",
+    "value": "ArgonVault Security Suite"
+  },
+  {
+    "id": 2130771969,
+    "idHex": "0x7f010001",
+    "packageName": "com.argon.vault",
+    "type": "string",
+    "name": "vault_sync_endpoint",
+    "value": "http://api.argonvault.internal/v2/sync"
+  },
+  {
+    "id": 2130771970,
+    "idHex": "0x7f010002",
+    "packageName": "com.argon.vault",
+    "type": "string",
+    "name": "btn_unlock_label",
+    "value": "Unlock Hardware Vault"
+  },
+  {
+    "id": 2130771971,
+    "idHex": "0x7f010003",
+    "packageName": "com.argon.vault",
+    "type": "string",
+    "name": "status_default",
+    "value": "Vault Status: Locked (AES-256 + TEE)"
+  },
+  {
+    "id": 2130837504,
+    "idHex": "0x7f020000",
+    "packageName": "com.argon.vault",
+    "type": "layout",
+    "name": "activity_main",
+    "value": "res/layout/activity_main.xml"
+  },
+  {
+    "id": 2130903040,
+    "idHex": "0x7f030000",
+    "packageName": "com.argon.vault",
+    "type": "id",
+    "name": "btn_unlock",
+    "value": "false"
+  },
+  {
+    "id": 2130903041,
+    "idHex": "0x7f030001",
+    "packageName": "com.argon.vault",
+    "type": "id",
+    "name": "txt_status",
+    "value": "false"
+  },
+  {
+    "id": 2130903042,
+    "idHex": "0x7f030002",
+    "packageName": "com.argon.vault",
+    "type": "id",
+    "name": "webview_portal",
+    "value": "false"
+  },
+  {
+    "id": 2130968576,
+    "idHex": "0x7f040000",
+    "packageName": "com.argon.vault",
+    "type": "color",
+    "name": "argon_cyan",
+    "value": "#ff00e5ff"
+  }
+]

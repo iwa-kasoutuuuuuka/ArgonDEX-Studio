@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ArgonDEX Studio — Android APK Deep Decompiler & Static Security IDE</title>
+  <link rel="icon" type="image/svg+xml" href="assets/icon.svg" />
+  <link rel="apple-touch-icon" href="assets/icon.png" />
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+
+  <!-- TOP NAVIGATION BAR -->
+  <header class="top-navbar">
+    <div class="brand-group">
+      <div class="brand-logo"><img src="assets/icon.svg" alt="ArgonDEX Studio" class="brand-logo-img" /></div>
+      <div class="brand-title">
+        <span>ArgonDEX Studio</span>
+        <span class="brand-badge">DEX → JAVA AST / SMALI / AXML / ARSC / ELF / MASVS</span>
+      </div>
+    </div>
+
+    <div class="apk-active-pill" id="active-apk-pill">
+      <span class="dot"></span>
+      <span>Initializing binary engine...</span>
+    </div>
+
+    <div class="top-actions">
+      <input type="file" id="apk-file-input" accept=".apk,.xapk,.dex,.arsc,.xml,.so,.jar,.aar,.zip" style="display:none" />
+      <button class="btn btn-primary" id="btn-open-apk" title="Open any local .apk, .dex, .xml, .arsc, or .so binary">
+        📂 Open APK / DEX
+      </button>
+      <button class="btn" id="btn-load-sample" title="Reload built-in binary Showcase APK (ArgonVault_v2.4.1.apk)">
+        🧪 Showcase APK
+      </button>
+      <button class="btn" id="btn-download-sample" title="Download the synthesized ArgonVault_v2.4.1.apk binary file">
+        ⬇️ Sample .APK
+      </button>
+      <button class="btn" id="btn-global-search" title="Global Symbol, Method, String & JNI Search (Ctrl+K)">
+        🔍 Search <span class="kbd-hint">Ctrl+K</span>
+      </button>
+      <button class="btn btn-accent" id="btn-export-zip" title="Export all decompiled .java, .smali, AndroidManifest.xml & Security Audit as .zip">
+        📦 Export Java Project (.zip)
+      </button>
+    </div>
+  </header>
+
+  <!-- MAIN 3-PANE IDE WORKSPACE -->
+  <main class="workspace" id="main-workspace">
+
+    <!-- LEFT SIDEBAR: PACKAGE / FILE / STRING EXPLORER -->
+    <aside class="sidebar-left">
+      <div class="sidebar-header">
+        <div class="sidebar-tabs">
+          <div class="sidebar-tab active" data-tab="classes">Classes</div>
+          <div class="sidebar-tab" data-tab="files">APK Files</div>
+          <div class="sidebar-tab" data-tab="strings">Strings</div>
+        </div>
+        <input
+          type="text"
+          id="sidebar-filter-input"
+          class="tree-filter-input"
+          placeholder="Filter classes, files, or strings..."
+        />
+      </div>
+      <div class="tree-container" id="tree-container"></div>
+    </aside>
+
+    <!-- CENTER WORKBENCH -->
+    <section class="center-workbench">
+      <!-- Mode Switcher Bar -->
+      <nav class="mode-tabbar">
+        <div class="mode-tab" data-mode="overview">
+          <span>📊 APK Overview</span>
+        </div>
+        <div class="mode-tab active" data-mode="code">
+          <span>☕ Java &amp; Smali Decompiler</span>
+          <span class="mode-badge" id="badge-classes">0</span>
+        </div>
+        <div class="mode-tab" data-mode="cfg">
+          <span>🕸️ Control Flow &amp; Call Graph</span>
+        </div>
+        <div class="mode-tab" data-mode="taint">
+          <span>🧬 Taint &amp; Deobfuscation</span>
+          <span class="mode-badge danger" id="badge-taint">0</span>
+        </div>
+        <div class="mode-tab" data-mode="manifest">
+          <span>📜 Manifest &amp; Binary XML</span>
+        </div>
+        <div class="mode-tab" data-mode="arsc">
+          <span>🎨 Resources (.arsc)</span>
+          <span class="mode-badge" id="badge-arsc">0</span>
+        </div>
+        <div class="mode-tab" data-mode="elf">
+          <span>⚙️ Native ELF (.so) &amp; JNI</span>
+          <span class="mode-badge" id="badge-elf">0</span>
+        </div>
+        <div class="mode-tab" data-mode="security">
+          <span>🛡️ Security Audit (MASVS)</span>
+          <span class="mode-badge danger" id="badge-security">0</span>
+        </div>
+        <div class="mode-tab" data-mode="hex">
+          <span>🔢 Binary Hex</span>
+        </div>
+      </nav>
+
+      <!-- Code Sub-Toolbar -->
+      <div class="code-subtoolbar" id="code-subtoolbar"></div>
+
+      <!-- Dynamic Workbench Content -->
+      <div class="workbench-body" id="workbench-body"></div>
+    </section>
+
+    <!-- RIGHT SIDEBAR: CLASS OUTLINE, METHODS & XREFS -->
+    <aside class="sidebar-right" id="right-inspector"></aside>
+
+  </main>
+
+  <!-- BOTTOM STATUS BAR -->
+  <footer class="status-bar">
+    <div class="status-group">
+      <span id="status-text">Ready. Drag &amp; drop any .apk, .dex, .arsc, .xml, or .so file anywhere into the workspace.</span>
+    </div>
+    <div class="status-group">
+      <span>Engine: Pure-JS Binary AXML / ARSC / Dalvik 256-Op AST / ELF64</span>
+      <span>100% Client-Side Offline Execution</span>
+    </div>
+  </footer>
+
+  <!-- DRAG & DROP OVERLAY -->
+  <div class="dropzone-overlay" id="dropzone-overlay">
+    <div class="dropzone-box">
+      <div style="font-size:42px;margin-bottom:12px">📦</div>
+      <h2 style="font-size:18px;margin-bottom:8px;color:var(--accent-cyan)">Drop Android Binary to Decompile</h2>
+      <p style="color:var(--text-secondary);line-height:1.6">
+        Supports <code>.apk</code>, <code>classes*.dex</code>, compiled <code>AndroidManifest.xml</code>,
+        <code>resources.arsc</code>, and native <code>lib/*.so</code> ELF binaries.
+      </p>
+    </div>
+  </div>
+
+  <!-- GLOBAL SEARCH MODAL (CTRL+K) -->
+  <div class="modal-backdrop" id="search-modal">
+    <div class="search-palette">
+      <input
+        type="text"
+        id="global-search-input"
+        class="search-palette-input"
+        placeholder="Search classes, methods, string literals, or JNI symbols across APK..."
+      />
+      <div class="search-results-list" id="global-search-results"></div>
+    </div>
+  </div>
+
+  <!-- CORE BINARY PARSER & DECOMPILER SCRIPTS -->
+  <script src="js/zip_engine.js"></script>
+  <script src="js/axml_arsc_parser.js"></script>
+  <script src="js/dex_decompiler.js"></script>
+  <script src="js/elf_security_engine.js"></script>
+  <script src="js/advanced_analysis_engine.js"></script>
+  <script src="js/sample_apk_builder.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

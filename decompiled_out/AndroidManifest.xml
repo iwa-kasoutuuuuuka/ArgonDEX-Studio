@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.argon.vault"
+    android:versionCode="20401"
+    android:versionName="2.4.1-argon"
+    android:compileSdkVersion="34">
+    <uses-sdk
+        android:minSdkVersion="26"
+        android:targetSdkVersion="34" />
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.CAMERA" />
+    <application
+        android:label="@string/app_name"
+        android:debuggable="true"
+        android:allowBackup="true"
+        android:usesCleartextTraffic="true"
+        android:supportsRtl="true">
+        <activity
+            android:name="com.argon.vault.MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="argonvault"
+                    android:host="unlock"
+                    android:pathPrefix="/token" />
+            </intent-filter>
+        </activity>
+        <service
+            android:name="com.argon.vault.net.VaultSyncService"
+            android:exported="true" />
+        <provider
+            android:name="com.argon.vault.db.VaultContentProvider"
+            android:authorities="com.argon.vault.provider"
+            android:exported="true"
+            android:grantUriPermissions="true" />
+    </application>
+</manifest>
