@@ -402,6 +402,51 @@ async function test(name, fn) {
     assert.strictEqual(globalThis.ArgonApp.State.theme, 'dark');
   });
 
+  await test('25. [Security] SARIF Path Traversal Guard, DEX Patcher Bounds & Malformed ELF Multi-ABI Guard', async () => {
+    // 1. SARIF URI path traversal prevention on adversarial class names
+    const evilAudit = {
+      findings: [{
+        severity: 'HIGH',
+        category: 'Test',
+        cwe: 'CWE-22',
+        title: 'Evil Class',
+        description: 'Traversal test',
+        remediation: 'Sanitize',
+        location: { className: '../../../../etc/passwd', target: 'evil()' }
+      }]
+    };
+    const evilFlows = [{
+      vulnerability: 'SQLi',
+      severity: 'CRITICAL',
+      className: '..\\..\\Windows\\System32\\cmd',
+      methodName: 'exec',
+      source: 'arg1',
+      sink: 'rawQuery'
+    }];
+    const sarif = globalThis.ArgonAdvanced.generateSarifReport({ fileName: 'evil.apk' }, evilAudit, evilFlows);
+    for (const r of sarif.runs[0].results) {
+      const uri = r.locations[0].physicalLocation.artifactLocation.uri;
+      assert(!uri.includes('..'), `Path traversal '..' leaked in SARIF URI: ${uri}`);
+    }
+
+    // 2. DEX patcher bounds & invalid opcode guards
+    const dexBytes = await apk.entryMap.get('classes.dex').extract();
+    assert.throws(() => globalThis.ArgonDex.patchDexInstruction(dexBytes, 0x10, { type: 'nop' }), /Invalid DEX bytecode file offset/);
+    assert.throws(() => globalThis.ArgonDex.patchDexInstruction(dexBytes, dexBytes.length + 10, { type: 'nop' }), /Invalid DEX bytecode file offset/);
+    assert.throws(() => globalThis.ArgonDex.patchDexInstruction(dexBytes, 0x80, { type: 'nop', unitLen: 999999 }), /beyond DEX file boundary/);
+
+    // 3. Malformed negative/out-of-bounds ELF .text section guard
+    const negMeta = { architecture: 'X86_64', exportedSymbols: [], sections: [{ name: '.text', offset: -16, addr: 0x1000, size: 32 }] };
+    assert.deepStrictEqual(globalThis.ArgonAdvanced.disassembleMultiArchElf(new Uint8Array(64), negMeta, 'X86_64'), []);
+    assert.deepStrictEqual(globalThis.ArgonAdvanced.disassembleMultiArchElf(null, negMeta, 'ARM32'), []);
+
+    // 4. RegisterNatives scanner on random/adversarial binary noise
+    const noise = new Uint8Array(4096);
+    for (let i = 0; i < noise.length; i++) noise[i] = (i * 73 + 41) & 0xff;
+    const regNoise = globalThis.ArgonAdvanced.scanDynamicRegisterNatives(noise, { exportedSymbols: [], importedSymbols: [] }, [dex]);
+    assert(Array.isArray(regNoise.bindings), 'Expected safe array return on binary noise');
+  });
+
   console.log('====================================================================');
   console.log(` Results: ${passed} passed, ${failed} failed`);
   console.log('====================================================================');

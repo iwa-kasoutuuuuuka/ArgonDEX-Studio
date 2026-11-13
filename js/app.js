@@ -2066,8 +2066,9 @@
     const dexIdx = State.dexFiles.findIndex(d => d.dexName === dexName);
     if (dexIdx === -1) throw new Error(`DEX not found: ${dexName}`);
     const dex = State.dexFiles[dexIdx];
+    if (!dex.rawBytes) throw new Error(`DEX rawBytes unavailable for ${dexName}`);
     const patchRes = global.ArgonDex.patchDexInstruction(dex.rawBytes, fileByteOffset, { type: patchType, unitLen });
-    const reparsed = global.ArgonDex.parseDexFile(patchRes.bytes, dex.dexName);
+    const reparsed = global.ArgonDex.parseDexFile(patchRes.bytes, dex.dexName, State.arsc);
     State.dexFiles[dexIdx] = reparsed;
 
     // Rebuild class index while keeping current selected class synced to newly patched AST

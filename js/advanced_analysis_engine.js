@@ -1625,9 +1625,16 @@
           properties: { cwe: f.cwe || '', severity: f.severity }
         });
       }
+      const safeSarifClass = (clsName) => {
+        if (!clsName) return 'UnknownClass';
+        if (global.ArgonDex && typeof global.ArgonDex.sanitizeClassPath === 'function') {
+          return global.ArgonDex.sanitizeClassPath(clsName);
+        }
+        return String(clsName).replace(/\.\./g, '_').replace(/[^A-Za-z0-9_$.]/g, '_').replace(/\./g, '/');
+      };
       const uri = f.location?.className
-        ? `src/main/java/${f.location.className.replace(/\./g, '/')}.java`
-        : (f.location?.file || 'AndroidManifest.xml');
+        ? `src/main/java/${safeSarifClass(f.location.className)}.java`
+        : String(f.location?.file || 'AndroidManifest.xml').replace(/\.\.[\/\\]/g, '');
       results.push({
         ruleId,
         level: toLevel(f.severity),
@@ -1653,13 +1660,16 @@
           properties: { severity: flow.severity }
         });
       }
+      const flowSafePath = (global.ArgonDex && typeof global.ArgonDex.sanitizeClassPath === 'function')
+        ? global.ArgonDex.sanitizeClassPath(flow.className || 'UnknownClass')
+        : String(flow.className || 'UnknownClass').replace(/\.\./g, '_').replace(/\./g, '/');
       results.push({
         ruleId,
         level: toLevel(flow.severity),
-        message: { text: `${flow.vulnerability} in ${flow.className}.${flow.methodName}(): ${flow.source} -> ${flow.sink}` },
+        message: { text: `${flow.vulnerability} in ${flow.className || 'UnknownClass'}.${flow.methodName || 'unknown'}(): ${flow.source} -> ${flow.sink}` },
         locations: [{
           physicalLocation: {
-            artifactLocation: { uri: `src/main/java/${flow.className.replace(/\./g, '/')}.java` },
+            artifactLocation: { uri: `src/main/java/${flowSafePath}.java` },
             region: { startLine: 1 }
           }
         }]
@@ -1915,9 +1925,9 @@
   }
 
   function disassembleMultiArchElf(bytes, elfMeta, archOverride) {
-    if (!elfMeta || !elfMeta.sections) return [];
+    if (!bytes || !elfMeta || !elfMeta.sections) return [];
     const textSec = elfMeta.sections.find(s => s.name === '.text');
-    if (!textSec || textSec.size === 0 || textSec.offset >= bytes.length) return [];
+    if (!textSec || textSec.size <= 0 || textSec.offset < 0 || textSec.offset >= bytes.length) return [];
 
     const symByAddr = new Map();
     for (const sym of (elfMeta.exportedSymbols || [])) {
