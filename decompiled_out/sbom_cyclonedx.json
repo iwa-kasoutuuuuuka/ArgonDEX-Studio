@@ -1,0 +1,111 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.5",
+  "serialNumber": "urn:uuid:argondex-75177ae27595",
+  "version": 1,
+  "metadata": {
+    "timestamp": "2026-11-13T04:26:43.976Z",
+    "tools": [
+      {
+        "vendor": "ArgonDEX Studio",
+        "name": "ArgonDEX Analyzer",
+        "version": "3.5.0"
+      }
+    ],
+    "component": {
+      "type": "application",
+      "name": "com.argon.vault",
+      "version": "2.4.1-argon (20401)",
+      "bom-ref": "app:com.argon.vault",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "75177ae275951fc37382db964bff6d4f4233810ffbc89d86378df884fea8f921"
+        }
+      ],
+      "properties": [
+        {
+          "name": "android:minSdkVersion",
+          "value": "26"
+        },
+        {
+          "name": "android:targetSdkVersion",
+          "value": "34"
+        }
+      ]
+    }
+  },
+  "components": [
+    {
+      "type": "application",
+      "name": "com.argon.vault",
+      "version": "2.4.1-argon (20401)",
+      "bom-ref": "app:com.argon.vault",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "75177ae275951fc37382db964bff6d4f4233810ffbc89d86378df884fea8f921"
+        }
+      ],
+      "properties": [
+        {
+          "name": "android:minSdkVersion",
+          "value": "26"
+        },
+        {
+          "name": "android:targetSdkVersion",
+          "value": "34"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "name": "com.argon.vault",
+      "version": "dex-embedded",
+      "bom-ref": "pkg:com.argon.vault",
+      "purl": "pkg:android/com.argon.vault"
+    },
+    {
+      "type": "library",
+      "name": "lib/arm64-v8a/libnative-vault.so",
+      "version": "ARM64 (AArch64)",
+      "bom-ref": "native:lib/arm64-v8a/libnative-vault.so",
+      "properties": [
+        {
+          "name": "elf:soname",
+          "value": "libnative-vault.so"
+        },
+        {
+          "name": "elf:pie",
+          "value": "true"
+        },
+        {
+          "name": "elf:nx",
+          "value": "true"
+        }
+      ]
+    },
+    {
+      "type": "cryptographic-asset",
+      "name": "AES-128/192/256",
+      "description": "AES Rijndael Forward S-Box (256-byte lookup table)",
+      "bom-ref": "crypto:AES-128/192/256:0x00002bb4"
+    },
+    {
+      "type": "cryptographic-asset",
+      "name": "ChaCha20 Stream Cipher",
+      "description": "ChaCha20 / Salsa20 Sigma Constant (\"expand 32-byte k\")",
+      "bom-ref": "crypto:ChaCha20 Stream Cipher:0x00002bc4"
+    }
+  ],
+  "dependencies": [
+    {
+      "ref": "native:lib/arm64-v8a/libnative-vault.so",
+      "dependsOn": [
+        "sys:liblog.so",
+        "sys:libc.so",
+        "sys:libcrypto.so"
+      ]
+    }
+  ]
+}

@@ -52,12 +52,12 @@ flowchart TB
 
 | モジュール | 実装ファイル | 主な解析能力・特徴 |
 | :--- | :--- | :--- |
-| **バイナリアーカイブ＆署名検証エンジン** | `js/zip_engine.js` | Pure-JS ZIP パーサ／ビルダ、RFC 1951 INFLATE（**256 MB Zip-Bomb 防御上限付き**）、Shannon エントロピー計算、**APK Signature Scheme v2/v3** (`APK Sig Block 42`) 解析、**X.509 / PKCS#7 DER 証明書**デコーダ。 |
+| **バイナリアーカイブ＆署名検証エンジン** | `js/zip_engine.js` | Pure-JS ZIP パーサ／ビルダ、RFC 1951 INFLATE（**256 MB Zip-Bomb 防御上限付き**）、Pure-JS **SHA-1 / SHA-256 / Adler-32** ハッシュ・チェックサム計算、Shannon エントロピー計算、**APK Signature Scheme v2/v3** 解析、**X.509 / PKCS#7 DER 証明書**デコーダ。 |
 | **バイナリ XML & リソーステーブル復元** | `js/axml_arsc_parser.js` | コンパイル済み `AndroidManifest.xml` やレイアウト XML (`0x00080003`) を完全な XML テキストへ復元。`resources.arsc` (`0x000C0002`) を解析し、コード中の `0x7fXXXXXX` 定数を `@string/...` や `R.layout...` へ自動変換。 |
-| **Dalvik → Java AST 逆コンパイラ** | `js/dex_decompiler.js` | Dalvik 全256オペコード対応の `.smali` 逆アセンブラ、基本ブロック CFG 構築、および構造化 **Java AST 逆コンパイラ**（`if`/`else`/`while`/`switch`/`try-catch`・**`synchronized` ブロック**・**短絡論理式 `&&`/`\|\|`**・**`fill-array-data` 配列リテラル**・**Java 8+ `invoke-custom` ラムダ式**復元、`StringBuilder` 連結畳み込み、遅延メモ化キャッシュ）。 |
-| **多段 Worklist SSA テイント解析 & 文字列復号・難読化解除** | `js/advanced_analysis_engine.js` | **多段不動点 Worklist SSA テイントエンジン（最大6ホップ）**：汚染源からヘルパーメソッド・フィールドを跨いで危険なシンクまでの伝播を完全追跡。<br>**Dalvik 静的 XOR 文字列復号エミュレータ**：`fill-array-data` + `xor-int` による暗号化バイト配列を静的エミュレートして平文を自動復号。<br>**ProGuard/R8 スマート難読化解除** & **Frida 動的フックスクリプト (`frida_argon_hooks.js`) 自動生成**。 |
-| **ネイティブ ELF & ARM64 → Pseudo-C デコンパイラ** | `js/elf_security_engine.js`<br>`js/advanced_analysis_engine.js` | 32/64-bit `.so` 解析、**PIE / NX / Full RELRO / Stack Canary / FORTIFY** 判定、JNI 自動リンク、**シンボル解決付き ARM64 (`.text`) 機械語逆アセンブラ**、**ARM64 → Pseudo-C（疑似C言語）構造化デコンパイラ**、および **AES S-Box / ChaCha20 / SHA-256** 暗号定数スキャナ。 |
-| **OWASP MASVS 静的セキュリティ監査** | `js/elf_security_engine.js` | Manifest 設定不備、ハードコードされた秘密鍵、脆弱な暗号モード（`AES/ECB`）、SQLi、WebView ブリッジ、ネイティブ保護欠如を CVSS / CWE / OWASP MASVS 基準で自動スコアリング。 |
+| **Dalvik → Java AST 逆コンパイラ & Round-Trip パッチャ** | `js/dex_decompiler.js` | Dalvik 全256オペコード対応の `.smali` 逆アセンブラ、基本ブロック CFG、構造化 **Java AST 逆コンパイラ**（`synchronized`、`while(cond)` 畳み込み、短絡論理式、`fill-array-data`、`invoke-custom` ラムダ対応）、および **Round-Trip DEX バイトコードパッチャ（分岐反転・定数上書き・NOP 化＋SHA-1/Adler-32 自動再計算＆再構築 APK 出力）**。 |
+| **多段 SSA テイント・APK BinDiff・MITRE / SARIF / SBOM** | `js/advanced_analysis_engine.js` | **多段 Worklist SSA テイントエンジン（最大6ホップ）**、**Dalvik 静的 XOR 復号**、**ProGuard/R8 難読化解除**、**Frida フック自動生成**、**APK バージョン BinDiff（行単位 Unified Java AST Diff）**、**MITRE ATT&CK® Mobile マッピング**、**SARIF v2.1.0 / CycloneDX v1.5 SBOM 出力**。 |
+| **ネイティブ ELF & Multi-ABI / RegisterNatives 解析** | `js/elf_security_engine.js`<br>`js/advanced_analysis_engine.js` | 32/64-bit `.so` 解析、**PIE / NX / Full RELRO / Stack Canary** 判定、**動的 JNI `RegisterNatives` (`JNINativeMethod`) テーブル自動スキャナ**、**Multi-ABI（ARM64 / ARM32 / x86_64）逆アセンブラ**、**ARM64 → Pseudo-C デコンパイラ**、および **AES / ChaCha20 / SHA-256** 定数スキャナ。 |
+| **OWASP MASVS 監査 & インライン Blob Worker** | `js/elf_security_engine.js`<br>`js/app.js` | CVSS / CWE / OWASP MASVS 自動スコアリング、および `file://` 環境・CORS 制約下でも安全にフォールバック可能な **インライン Blob Web Worker オフロードエンジン**。 |
 
 ---
 
@@ -70,20 +70,22 @@ flowchart TB
 python argondex_cli.py serve --port 8765 --open
 ```
 
-起動すると、内蔵のバイナリショーケース APK **`ArgonVault_v2.4.1_sample.apk`** が自動合成・ロードされ、すぐに以下の全8モードを体験できます：
-- **☕ Java & Smali Decompiler**：Java AST と Smali の並列表示、アドレス同期ハイライト、ワンクリック **「🧠 Smart Deobfuscate（難読化解除）」** トグル
+起動すると、内蔵のバイナリショーケース APK **`ArgonVault_v2.4.1_sample.apk`** が自動合成・ロードされ、すぐに以下の全9モードを体験できます：
+- **☕ Java & Smali Decompiler**：Java AST と Smali の並列表示、アドレス同期ハイライト、**Bytecode Hex サブモードからのワンクリック命令パッチ（分岐反転 / 強制 true / NOP 化）**、および **「🧠 Smart Deobfuscate（難読化解除）」** トグル
 - **🕸️ Control Flow & Call Graph**：**McCabe 循環的複雑度**・**即時支配ノード (`idom`)** バッジ付きインタラクティブ SVG フローグラフ
 - **🧬 Taint & Deobfuscation**：Source-to-Sink のレジスタ単位トレースと難読化シンボル対応表
-- **⚙️ Native ELF (.so) Inspector**：**ARM64 `.text` 機械語逆アセンブリ**と暗号 S-Box 定数検出
+- **⚙️ Native ELF (.so) Inspector**：**Multi-ABI（ARM64 / ARM32 / x86_64）切り替え逆アセンブリ**、**動的 JNI `RegisterNatives` スキャナ**、および暗号 S-Box 定数検出
+- **⚖️ APK Diff & Patch**：**Round-Trip パッチ済み APK 再構築エクスポート**、および 2つの APK 間（または自動生成ベースライン）の権限・クラス・シンボル・**Unified Java AST Diff** 比較エンジン
+- **🛡️ Security Audit (MASVS)**：OWASP MASVS / CWE 監査に加え、**MITRE ATT&CK® Mobile マッピング**、**SARIF v2.1.0**、**CycloneDX v1.5 SBOM** 出力に対応
 
 ### 2. コマンドライン (CLI) による一括逆コンパイル＆監査
-任意の `.apk` を Gradle 互換ディレクトリ構成（`src/main/java/...`, `smali/...`, `AndroidManifest.xml`, `resources_table.json`, `security_audit_report.json`）へ一括展開します。
+任意の `.apk` を Gradle 互換ディレクトリ構成（`src/main/java/...`, `smali/...`, `AndroidManifest.xml`, `resources_table.json`, `security_audit_report.json`, **`sarif_report.sarif.json`**, **`sbom_cyclonedx.json`**）へ一括展開します。
 
 ```bash
 # サンプル APK バイナリの生成
 python argondex_cli.py generate-sample --out ./ArgonVault_v2.4.1_sample.apk
 
-# APK の一括逆コンパイルと JSON セキュリティ監査レポート出力
+# APK の一括逆コンパイルと JSON セキュリティ監査 / SARIF / CycloneDX SBOM 出力
 python argondex_cli.py decompile ./ArgonVault_v2.4.1_sample.apk --out ./decompiled_out
 ```
 
@@ -91,10 +93,10 @@ python argondex_cli.py decompile ./ArgonVault_v2.4.1_sample.apk --out ./decompil
 
 ## デバッグ＆自己防衛セキュリティ検証（悪意ある APK への対策）
 
-リバースエンジニアリングツール自体を攻撃する悪意ある APK（Malicious APK）を想定し、以下の脆弱性対策を実装・自動テスト済みです。
+リバースエンジニアリングツール自体を攻撃する悪意ある APK（Malicious APK）を想定し、以下の脆弱性対策と機能群を実装・自動テスト済みです。
 
 ```bash
-# 全18ステージの機能・セキュリティ・構造化デバッグ自動検証スイートの実行
+# 全23ステージの機能・セキュリティ・バイナリパッチ・統合検証スイートの実行
 node tests/test_suite.js
 ```
 
@@ -106,7 +108,20 @@ node tests/test_suite.js
 
 ---
 
-## Phase 1〜3 高度化アップデート＆構造化デバッグ出力例
+## Phase 1〜4 高度化アップデート＆統合機能 (23-Stage Verified)
+
+### 0. 新規追加された 5大バイナリ編集・比較・標準化エンジン (Stages 19–23)
+1. **Round-Trip DEX バイトコードパッチャ & APK 再構築 (`js/dex_decompiler.js`, `js/zip_engine.js`)**
+   - Code Studio の **Bytecode Hex** サブモード上で Dalvik 条件分岐 (`if-eqz` ⇄ `if-nez` 等) のワンクリック反転、定数強制書き換え (`Force 1`)、`NOP` 化を即時実行。
+   - **Pure-JS SHA-1 (`0x0C..0x1F`) + Adler-32 (`0x08..0x0B`)** を自動再計算し、改変済み `classes*.dex` を組み込んだ APK を再生成・ダウンロード可能（v1 署名メタの自動クリーンアップ対応）。
+2. **APK バージョン BinDiff & Unified Java AST 差分エンジン (`js/advanced_analysis_engine.js`)**
+   - 2つの `.apk`（または自動合成された `v2.4.0` ベースライン）を比較し、権限・DEX クラス・ネイティブシンボル増減と **行単位カラー表示 Unified Java Diff** を可視化。
+3. **MITRE ATT&CK® Mobile マトリクス / SARIF v2.1.0 / CycloneDX v1.5 SBOM (`js/advanced_analysis_engine.js`, `argondex_cli.py`)**
+   - 静的解析結果・テイントフロー・難読化指標を **MITRE ATT&CK® Mobile** (`T1437.001`, `T1407`, `T1406`, `T1575`, `T1636` 等) に自動マッピングし、GitHub Code Scanning 対応の **SARIF v2.1.0** および **CycloneDX v1.5 SBOM** JSON を Web IDE / CLI の双方からエクスポート。
+4. **動的 JNI `RegisterNatives` スキャナ & Multi-ABI 逆アセンブラ**
+   - `.so` バイナリ内の `JNI_OnLoad` / `RegisterNatives` シンボルと `JNINativeMethod` 署名文字列テーブルをスキャンして Java `native` メソッドへ自動リンク。**ARM64 / ARM32 (ARMv7) / x86_64** の切り替え逆アセンブルに対応。
+5. **インライン Blob Web Worker オフロード (`js/app.js`)**
+   - `file://` ローカル起動・CORS 環境でも動作するインライン `Blob` Worker（および非対応環境向け自動フォールバック）でバイナリ計算負荷を非同期オフロード。
 
 ### 1. 難読化解除 ＋ `synchronized` 復元 ＋ 暗号化バイト配列の静的 XOR 復号 (`CryptoTokenHelper.java`)
 `com.argon.vault.obf.a` に対するスマート難読化解除、`monitor-enter/exit` からの `synchronized` ブロック復元、および `fill-array-data` + `xor-int/lit8` の静的エミュレーション復号結果：
@@ -191,12 +206,12 @@ flowchart TB
 
 | Module | File | Highlights |
 | :--- | :--- | :--- |
-| **Binary Archive & Signing Engine** | `js/zip_engine.js` | Pure-JS ZIP parser/builder, RFC 1951 INFLATE with **256 MB Zip-Bomb protection**, Shannon entropy analyzer, **APK Signature Scheme v2/v3** (`APK Sig Block 42`) verifier, and **X.509 / PKCS#7 DER certificate** parser. |
+| **Binary Archive & Signing Engine** | `js/zip_engine.js` | Pure-JS ZIP parser/builder, RFC 1951 INFLATE with **256 MB Zip-Bomb protection**, Pure-JS **SHA-1 / SHA-256 / Adler-32**, Shannon entropy analyzer, **APK Signature Scheme v2/v3** verifier, and **X.509 / PKCS#7 DER certificate** parser. |
 | **Binary XML & Resource Decoder** | `js/axml_arsc_parser.js` | Decodes compiled `AndroidManifest.xml` and layout XMLs (`0x00080003`), parses `resources.arsc` (`0x000C0002`), and resolves `0x7fXXXXXX` IDs into `@string/...` / `R.layout...` references. |
-| **Dalvik-to-Java AST Decompiler** | `js/dex_decompiler.js` | Full Dalvik 256-opcode disassembler (`.smali`), Basic-Block Control Flow Graph builder, and structured **Java AST decompiler** (`if`/`else`/`while`/`switch`/`try-catch`, **`synchronized` blocks**, **short-circuit `&&`/`\|\|`**, **`fill-array-data` initializers**, **Java 8+ `invoke-custom` lambdas**, `StringBuilder` folding, and memoized lazy evaluation). |
-| **Multi-Hop SSA Taint, XOR String Decryptor & Frida Generator** | `js/advanced_analysis_engine.js` | **Fixed-Point Worklist Inter-Procedural SSA Taint Engine (6-hop)** tracking untrusted inputs across methods/fields to sinks. **Dalvik Static XOR String Decryptor** emulating encrypted byte arrays. **Smart ProGuard/R8 Deobfuscator** and **Automated Frida Hook Script Generator (`frida_argon_hooks.js`)**. |
-| **Native ELF & ARM64-to-Pseudo-C Decompiler** | `js/elf_security_engine.js`<br>`js/advanced_analysis_engine.js` | Parses 32/64-bit `.so` libraries, checks **PIE / NX / Full RELRO / Stack Canary / FORTIFY**, links JNI symbols, disassembles **ARM64 (`.text`) machine code** with symbol target resolution, **decompiles ARM64 to structured Pseudo-C**, and scans for **AES Rijndael S-Box / ChaCha20 / SHA-256** binary constants. |
-| **OWASP MASVS Security Auditor** | `js/elf_security_engine.js` | Automated CVSS/CWE/OWASP MASVS scoring across manifest configurations, hardcoded secrets, weak cryptography (`AES/ECB`), SQL injection, WebView bridges, and native memory mitigations. |
+| **Dalvik-to-Java Decompiler & Round-Trip Patcher** | `js/dex_decompiler.js` | Full Dalvik 256-opcode disassembler (`.smali`), CFG builder, structured **Java AST decompiler** (`synchronized`, `while(cond)`, `&&`/`\|\|`, `fill-array-data`, lambdas), plus **Round-Trip DEX Bytecode Patcher** (`invert-branch`, `const-true`, `nop`) with automatic **SHA-1 & Adler-32 checksum recalculation** and APK rebuild. |
+| **Multi-Hop SSA Taint, BinDiff, MITRE / SARIF / SBOM** | `js/advanced_analysis_engine.js` | **6-hop Worklist SSA Taint Engine**, **Dalvik XOR Decryptor**, **Smart ProGuard/R8 Deobfuscator**, **Frida Hook Generator**, **APK Version BinDiff (Unified Java AST Diff)**, **MITRE ATT&CK® Mobile Matrix Mapping**, **SARIF v2.1.0**, and **CycloneDX v1.5 SBOM** exporters. |
+| **Native ELF, RegisterNatives & Multi-ABI Disassembler** | `js/elf_security_engine.js`<br>`js/advanced_analysis_engine.js` | Parses 32/64-bit `.so` libraries (**PIE / NX / RELRO / Canary**), resolves static & dynamic **`JNI_OnLoad` / `RegisterNatives`** (`JNINativeMethod`) bindings, provides **Multi-ABI (`ARM64` / `ARM32` / `x86_64`) Disassembler**, **ARM64-to-Pseudo-C Decompiler**, and **AES / ChaCha20 / SHA-256** constant scanning. |
+| **OWASP MASVS Auditor & Inline Blob Worker** | `js/elf_security_engine.js`<br>`js/app.js` | Automated CVSS/CWE/OWASP MASVS scoring and a CORS/`file://`-safe **Inline Blob Web Worker** offload engine with seamless fallback. |
 
 ---
 
@@ -210,13 +225,13 @@ python argondex_cli.py serve --port 8765 --open
 ```
 
 ### 2. Headless CLI Decompilation & Security Audit
-Decompile any `.apk` into a structured Gradle-style directory (`src/main/java/...`, `smali/...`, `AndroidManifest.xml`, `resources_table.json`, and `security_audit_report.json`):
+Decompile any `.apk` into a structured Gradle-style directory (`src/main/java/...`, `smali/...`, `AndroidManifest.xml`, `resources_table.json`, `security_audit_report.json`, **`sarif_report.sarif.json`**, and **`sbom_cyclonedx.json`**):
 
 ```bash
 # Generate the sample showcase APK binary
 python argondex_cli.py generate-sample --out ./ArgonVault_v2.4.1_sample.apk
 
-# Decompile APK to Java, Smali, XML, and JSON Security Audit Report
+# Decompile APK to Java, Smali, XML, SARIF v2.1.0, CycloneDX SBOM & Security Report
 python argondex_cli.py decompile ./ArgonVault_v2.4.1_sample.apk --out ./decompiled_out
 ```
 
@@ -224,7 +239,7 @@ python argondex_cli.py decompile ./ArgonVault_v2.4.1_sample.apk --out ./decompil
 
 ## Debugging & Self-Vulnerability Hardening Verification
 
-Run the automated 18-stage verification suite:
+Run the automated 23-stage verification suite:
 
 ```bash
 node tests/test_suite.js
@@ -235,7 +250,7 @@ node tests/test_suite.js
 3. **Zip-Bomb Decompression Ceiling (`js/zip_engine.js`)**: RFC 1951 INFLATE enforces a hard `256 MB` (`MAX_INFLATE_BYTES`) allocation ceiling.
 4. **Malformed Binary Chunk & LEB128 Bounds (`js/axml_arsc_parser.js`, `js/dex_decompiler.js`)**: Strict header size guards (`cSize >= 8`, `offset + cSize <= bytes.length`) and 5-byte ULEB128/SLEB128 bounds prevent infinite loops on corrupted or adversarial DEX/AXML/ARSC headers.
 5. **Deobfuscator RegExp Escaping & Constructor Isolation (`js/advanced_analysis_engine.js`)**: Escapes regex metacharacters in obfuscated identifiers and isolates class constructor renaming from method renaming.
-6. **Phase 1–3 Advanced Verification (`tests/test_suite.js` Stages 14–18)**: Verifies `synchronized (this)` recovery, `while (v0 < arg1)` loop header condition folding, `fill-array-data` + XOR static string decryption (`"ARGON_KEY!"`), ARM64 `BL` symbol resolution, ARM64-to-Pseudo-C decompilation (`0x10006 /* JNI_VERSION_1_6 */`), automated Frida hook script generation (`frida_argon_hooks.js`), and SQLi parameter taint attribution.
+6. **Phase 1–4 Verification (`tests/test_suite.js` Stages 14–23)**: Verifies `synchronized (this)` recovery, `while (v0 < arg1)` loop header condition folding, `fill-array-data` + XOR decryption (`"ARGON_KEY!"`), ARM64 `BL` resolution & Pseudo-C, Frida hook generation, SQLi parameter taint attribution, **Round-Trip DEX bytecode patching + SHA-1/Adler-32 recalculation**, **APK BinDiff & Unified Java AST Diff**, **MITRE ATT&CK® Mobile / SARIF v2.1.0 / CycloneDX v1.5 SBOM**, **JNI `RegisterNatives` + Multi-ABI (`ARM64`/`ARM32`/`x86_64`) disassembly**, and **Inline Blob Web Worker fallback**.
 
 ---
 
@@ -243,7 +258,7 @@ node tests/test_suite.js
 
 ```text
 ArgonDEX-Studio/
-├── index.html                      # 8-Mode Dark-Glass Web IDE (ブラウザ統合開発環境)
+├── index.html                      # 9-Mode Dark-Glass Web IDE (ブラウザ統合開発環境)
 ├── argondex_cli.py                 # Headless Python + Node.js CLI Decompiler & Web Server
 ├── ArgonVault_v2.4.1_sample.apk    # Pre-built multi-layer binary showcase APK (検証用サンプルAPK)
 ├── GEMINI.md                       # Structured thinking & root-cause debugging guide (思考・デバッグ指針)
@@ -254,14 +269,14 @@ ArgonDEX-Studio/
 ├── css/
 │   └── styles.css                  # IDE dark-glass styling & layout
 ├── js/
-│   ├── zip_engine.js               # ZIP/APK parser, INFLATE, v2/v3 Signing Block, X.509 DER
+│   ├── zip_engine.js               # ZIP/APK parser/builder, INFLATE, Pure-JS SHA-1/SHA-256, X.509 DER
 │   ├── axml_arsc_parser.js         # Binary AXML & resources.arsc decoder
-│   ├── dex_decompiler.js           # Dalvik parser, Smali disassembler, CFG & Java AST engine
+│   ├── dex_decompiler.js           # Dalvik parser, Round-Trip Patcher, Smali, CFG & Java AST engine
 │   ├── elf_security_engine.js      # ELF32/64 parser, JNI linker & OWASP MASVS auditor
-│   ├── advanced_analysis_engine.js # Worklist SSA Taint, XOR Decryptor, ARM64 Pseudo-C & Frida Gen
+│   ├── advanced_analysis_engine.js # Taint, XOR Decryptor, BinDiff, MITRE/SARIF/SBOM & Multi-ABI ELF
 │   ├── sample_apk_builder.js       # Binary APK synthesizer (DEX + AXML + ARSC + ELF64 + Cert)
-│   └── app.js                      # IDE controller, syntax highlighters, SVG CFG & exporter
+│   └── app.js                      # IDE controller, Inline Blob Worker, Diff/Patch UI & exporter
 ├── tests/
-│   └── test_suite.js               # 18-stage functional, decompiler & security test suite
-└── decompiled_out/                 # Reference CLI output (Java, Smali, Pseudo-C, Frida hooks, JSON)
+│   └── test_suite.js               # 23-stage functional, patching, diff & security test suite
+└── decompiled_out/                 # Reference CLI output (Java, Smali, Pseudo-C, SARIF, SBOM, JSON)
 ```

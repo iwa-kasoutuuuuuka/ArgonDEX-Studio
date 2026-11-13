@@ -858,6 +858,7 @@
 
         instructions.push({
           pc,
+          fileByteOffset: insnsBase + pc * 2,
           unitLen,
           opcode: op,
           name: meta.name,
@@ -1083,6 +1084,7 @@
       dexName,
       version,
       fileSize,
+      rawBytes: new Uint8Array(bytes),
       checksum: '0x' + checksum.toString(16).padStart(8, '0'),
       signatureHex,
       endianTag: '0x' + endianTag.toString(16),
@@ -2017,6 +2019,110 @@
     return result;
   }
 
+  function recalculateDexChecksums(dexBytes) {
+    const out = new Uint8Array(dexBytes);
+    if (out.length < 32) {
+      throw new Error('DEX buffer too small to recalculate header checksums');
+    }
+    const dv = new DataView(out.buffer, out.byteOffset, out.byteLength);
+
+    // 1. Recompute 20-byte SHA-1 signature over bytes [32..end) -> write to [12..31]
+    if (global.ArgonZip && typeof global.ArgonZip.pureJsSha1Bytes === 'function') {
+      const sha1 = global.ArgonZip.pureJsSha1Bytes(out, 32, out.length);
+      out.set(sha1, 12);
+    }
+
+    // 2. Recompute Adler-32 checksum over bytes [12..end) -> write LE uint32 to [8..11]
+    if (global.ArgonZip && typeof global.ArgonZip.adler32 === 'function') {
+      const adler = global.ArgonZip.adler32(out, 12, out.length);
+      dv.setUint32(8, adler, true);
+    }
+
+    return out;
+  }
+
+  const DALVIK_BRANCH_INVERSIONS = new Map([
+    [0x32, 0x33], [0x33, 0x32], // if-eq <-> if-ne
+    [0x34, 0x35], [0x35, 0x34], // if-lt <-> if-ge
+    [0x36, 0x37], [0x37, 0x36], // if-gt <-> if-le
+    [0x38, 0x39], [0x39, 0x38], // if-eqz <-> if-nez
+    [0x3a, 0x3b], [0x3b, 0x3a], // if-ltz <-> if-gez
+    [0x3c, 0x3d], [0x3d, 0x3c]  // if-gtz <-> if-lez
+  ]);
+
+  function patchDexInstruction(dexBytes, fileByteOffset, patchSpec) {
+    if (!(dexBytes instanceof Uint8Array)) {
+      throw new Error('patchDexInstruction expects Uint8Array DEX bytes');
+    }
+    if (!Number.isInteger(fileByteOffset) || fileByteOffset < 0x70 || fileByteOffset + 2 > dexBytes.length) {
+      throw new Error(`Invalid DEX bytecode file offset: ${fileByteOffset}`);
+    }
+
+    const spec = typeof patchSpec === 'string' ? { type: patchSpec } : (patchSpec || {});
+    const type = spec.type || 'nop';
+    const unitLen = Math.max(1, spec.unitLen || 1);
+    const patchBytesLen = spec.rawWords ? spec.rawWords.length * 2 : unitLen * 2;
+    if (fileByteOffset + patchBytesLen > dexBytes.length) {
+      throw new Error('Patch extends beyond DEX file boundary');
+    }
+
+    const buf = new Uint8Array(dexBytes);
+    const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+    const readHexSlice = (byteLen) => {
+      const parts = [];
+      for (let i = 0; i < byteLen; i += 2) {
+        parts.push(dv.getUint16(fileByteOffset + i, true).toString(16).padStart(4, '0'));
+      }
+      return parts.join(' ');
+    };
+    const oldWordsHex = readHexSlice(patchBytesLen);
+
+    if (type === 'invert-branch') {
+      const op = buf[fileByteOffset];
+      const inverted = DALVIK_BRANCH_INVERSIONS.get(op);
+      if (inverted === undefined) {
+        throw new Error(`Opcode 0x${op.toString(16).padStart(2, '0')} is not an invertible conditional branch`);
+      }
+      buf[fileByteOffset] = inverted;
+    } else if (type === 'const-true' || type === 'const-false') {
+      const origUnit0 = dv.getUint16(fileByteOffset, true);
+      const reg = (spec.register !== undefined ? spec.register : ((origUnit0 >> 8) & 0x0f)) & 0x0f;
+      const val = type === 'const-true' ? 1 : 0;
+      const newUnit0 = 0x12 | (reg << 8) | ((val & 0x0f) << 12);
+      dv.setUint16(fileByteOffset, newUnit0, true);
+      for (let u = 1; u < unitLen; u++) {
+        dv.setUint16(fileByteOffset + u * 2, 0x0000, true);
+      }
+    } else if (type === 'nop') {
+      for (let u = 0; u < unitLen; u++) {
+        dv.setUint16(fileByteOffset + u * 2, 0x0000, true);
+      }
+    } else if (type === 'rawWords' && Array.isArray(spec.rawWords) && spec.rawWords.length > 0) {
+      for (let i = 0; i < spec.rawWords.length; i++) {
+        dv.setUint16(fileByteOffset + i * 2, spec.rawWords[i] & 0xffff, true);
+      }
+    } else {
+      throw new Error(`Unsupported DEX patch type: ${type}`);
+    }
+
+    const newWordsHex = readHexSlice(patchBytesLen);
+    const finalBytes = recalculateDexChecksums(buf);
+    const finalDv = new DataView(finalBytes.buffer, finalBytes.byteOffset, finalBytes.byteLength);
+    const checksumHex = '0x' + finalDv.getUint32(8, true).toString(16).padStart(8, '0');
+    const signatureHex = Array.from(finalBytes.subarray(12, 32))
+      .map(b => b.toString(16).padStart(2, '0')).join('');
+
+    return {
+      bytes: finalBytes,
+      fileByteOffset,
+      patchType: type,
+      oldWordsHex,
+      newWordsHex,
+      checksumHex,
+      signatureHex
+    };
+  }
+
   global.ArgonDex = {
     parseDexFile,
     decompileClassToJava,
@@ -2025,6 +2131,8 @@
     descriptorToJavaType,
     descriptorToFullClassName,
     formatAccessFlags,
-    sanitizeClassPath
+    sanitizeClassPath,
+    recalculateDexChecksums,
+    patchDexInstruction
   };
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -16,12 +16,21 @@
     elfFiles: [],
     jniByClassMethod: new Map(),
     securityAudit: null,
+    mitreAttack: null,
+    sbom: null,
+    sarif: null,
+    patchHistory: [],
+    diffBaseline: null,
+    diffResult: null,
+    diffSelectedClassIdx: 0,
+    elfArchOverride: 'AUTO',
+    workerInfo: { mode: 'sync', durationMs: 0 },
     allCrossRefs: [],
 
     // UI state
     sidebarTab: 'classes', // 'classes' | 'files' | 'strings'
     sidebarFilter: '',
-    activeMode: 'code',    // 'overview' | 'code' | 'cfg' | 'manifest' | 'arsc' | 'elf' | 'security' | 'hex'
+    activeMode: 'code',    // 'overview' | 'code' | 'cfg' | 'taint' | 'manifest' | 'arsc' | 'elf' | 'security' | 'diff' | 'hex'
     codeSubMode: 'split',  // 'split' | 'java' | 'smali' | 'insns'
     cfgSubMode: 'method',  // 'method' | 'callgraph'
     selectedClass: null,
@@ -196,6 +205,87 @@
     return new Promise(resolve => setTimeout(resolve, 0));
   }
 
+  // Inline Blob Web Worker (CORS & file:// safe with graceful main-thread fallback)
+  function createInlineAnalysisWorker() {
+    if (typeof Worker === 'undefined' || typeof Blob === 'undefined' || typeof URL === 'undefined' || typeof URL.createObjectURL !== 'function') {
+      return null;
+    }
+    const workerCode = `
+      self.onmessage = function(ev) {
+        const payload = ev.data || {};
+        const bytes = payload.bytes instanceof Uint8Array ? payload.bytes : new Uint8Array(payload.bytes || []);
+        const counts = new Uint32Array(256);
+        for (let i = 0; i < bytes.length; i++) counts[bytes[i]]++;
+        let entropy = 0;
+        const len = bytes.length || 1;
+        for (let b = 0; b < 256; b++) {
+          if (counts[b] > 0) {
+            const p = counts[b] / len;
+            entropy -= p * Math.log2(p);
+          }
+        }
+        self.postMessage({ ok: true, entropy: Math.round(entropy * 1000) / 1000, scannedBytes: bytes.length });
+      };
+    `;
+    try {
+      const blob = new Blob([workerCode], { type: 'application/javascript' });
+      const blobUrl = URL.createObjectURL(blob);
+      const worker = new Worker(blobUrl);
+      return {
+        worker,
+        dispose() {
+          try { worker.terminate(); } catch (_) {}
+          try { URL.revokeObjectURL(blobUrl); } catch (_) {}
+        }
+      };
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function runOffloadedWorkerTelemetry(rawBytes) {
+    const tStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    const handle = createInlineAnalysisWorker();
+    if (!handle) {
+      const ent = global.ArgonZip && rawBytes ? global.ArgonZip.computeShannonEntropy(rawBytes) : 0;
+      return Promise.resolve({
+        mode: 'main-thread-fallback',
+        entropy: ent,
+        durationMs: Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - tStart)
+      });
+    }
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        handle.dispose();
+        resolve({ mode: 'worker-timeout-fallback', entropy: 0, durationMs: 0 });
+      }, 1500);
+      handle.worker.onmessage = (ev) => {
+        clearTimeout(timer);
+        const data = ev.data || {};
+        handle.dispose();
+        resolve({
+          mode: 'inline-blob-worker',
+          entropy: data.entropy || 0,
+          durationMs: Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - tStart)
+        });
+      };
+      handle.worker.onerror = () => {
+        clearTimeout(timer);
+        handle.dispose();
+        const ent = global.ArgonZip && rawBytes ? global.ArgonZip.computeShannonEntropy(rawBytes) : 0;
+        resolve({ mode: 'worker-error-fallback', entropy: ent, durationMs: 0 });
+      };
+      try {
+        const copy = new Uint8Array(rawBytes || []);
+        handle.worker.postMessage({ bytes: copy }, [copy.buffer]);
+      } catch (_) {
+        clearTimeout(timer);
+        handle.dispose();
+        resolve({ mode: 'worker-transfer-fallback', entropy: 0, durationMs: 0 });
+      }
+    });
+  }
+
   async function loadAndAnalyzeApkBuffer(arrayBuffer, fileName) {
     const t0 = performance.now();
     setStatus(`Parsing ZIP archive & APK Signing Block (${fileName})...`);
@@ -263,7 +353,7 @@
       }
     }
 
-    // 4. Parse all native ELF (.so) libraries + ARM64 Disassembly + Pseudo-C Decompilation
+    // 4. Parse all native ELF (.so) libraries + Multi-ABI Disassembly + RegisterNatives + Pseudo-C
     const elfFiles = [];
     const jniByClassMethod = new Map();
     const soEntries = apk.entries.filter(e => e.name.endsWith('.so'));
@@ -271,16 +361,32 @@
       try {
         const soBytes = await soEntry.extract();
         const parsedElf = global.ArgonElfSecurity.parseElfBinary(soBytes, soEntry.name);
+        parsedElf.rawBytes = new Uint8Array(soBytes);
         parsedElf.disassembly = global.ArgonAdvanced
-          ? global.ArgonAdvanced.disassembleElfTextSection(soBytes, parsedElf)
+          ? global.ArgonAdvanced.disassembleMultiArchElf(soBytes, parsedElf)
           : [];
         parsedElf.pseudoC = global.ArgonAdvanced
           ? global.ArgonAdvanced.decompileArm64ToPseudoC(soBytes, parsedElf)
           : '';
+        parsedElf.registerNatives = global.ArgonAdvanced
+          ? global.ArgonAdvanced.scanDynamicRegisterNatives(soBytes, parsedElf, dexFiles)
+          : { hasJniOnLoad: false, usesRegisterNatives: false, bindings: [] };
         elfFiles.push(parsedElf);
         for (const jni of parsedElf.jniMethods) {
           if (jni.type === 'method') {
             jniByClassMethod.set(`${jni.className}#${jni.methodName}`, jni);
+          }
+        }
+        for (const dyn of (parsedElf.registerNatives.bindings || [])) {
+          if (dyn.className && !dyn.className.startsWith('(')) {
+            jniByClassMethod.set(`${dyn.className}#${dyn.methodName}`, {
+              symbol: `${dyn.methodName} (RegisterNatives)`,
+              address: dyn.stringOffset,
+              library: parsedElf.fileName,
+              className: dyn.className,
+              methodName: dyn.methodName,
+              type: 'dynamic'
+            });
           }
         }
       } catch (e) {
@@ -288,7 +394,7 @@
       }
     }
 
-    // 5. Run Static Security Audit + Multi-Hop Worklist Taint Analysis + Smart Deobfuscation + Frida Script Generation
+    // 5. Run Static Security Audit + Taint + Deobfuscation + MITRE + SBOM + SARIF + Inline Blob Worker Telemetry
     const securityAudit = global.ArgonElfSecurity.runStaticSecurityAudit(
       manifestInfo,
       dexFiles,
@@ -306,6 +412,17 @@
     const fridaScript = global.ArgonAdvanced
       ? global.ArgonAdvanced.generateFridaHookScript(apk, manifestInfo, dexFiles, elfFiles, taintFlows, deobfData)
       : '';
+    const mitreAttack = global.ArgonAdvanced
+      ? global.ArgonAdvanced.mapMitreAttackMobile(manifestInfo, dexFiles, elfFiles, taintFlows, deobfData)
+      : { techniques: [], tacticCoverage: {} };
+    const sbom = global.ArgonAdvanced
+      ? global.ArgonAdvanced.generateCycloneDxSbom(apk, manifestInfo, dexFiles, elfFiles, cryptoConstants)
+      : null;
+    const sarif = global.ArgonAdvanced
+      ? global.ArgonAdvanced.generateSarifReport(apk, securityAudit, taintFlows)
+      : null;
+
+    const workerInfo = await runOffloadedWorkerTelemetry(apk.rawBytes);
 
     // Update global state
     State.apk = apk;
@@ -322,6 +439,15 @@
     State.deobfData = deobfData;
     State.cryptoConstants = cryptoConstants;
     State.fridaScript = fridaScript;
+    State.mitreAttack = mitreAttack;
+    State.sbom = sbom;
+    State.sarif = sarif;
+    State.patchHistory = [];
+    State.diffBaseline = null;
+    State.diffResult = null;
+    State.diffSelectedClassIdx = 0;
+    State.elfArchOverride = 'AUTO';
+    State.workerInfo = workerInfo;
     State.sidebarRenderLimit = 300;
     if (State.smartDeobfEnabled === undefined) State.smartDeobfEnabled = true;
     State.allCrossRefs = allCrossRefs;
@@ -533,6 +659,7 @@
       else if (State.activeMode === 'arsc') renderArscTableView(body);
       else if (State.activeMode === 'elf') renderElfNativeInspectorView(body);
       else if (State.activeMode === 'security') renderSecurityAuditView(body);
+      else if (State.activeMode === 'diff') renderDiffAndPatchView(body);
       else if (State.activeMode === 'hex') renderHexInspectorView(body);
     }
   }
@@ -620,7 +747,7 @@
         const jniLink = State.jniByClassMethod.get(`${cls.fullName}#${m.name}`);
         rows.push(`
           <tr style="background:var(--bg-elevated)">
-            <td colspan="5" style="font-weight:700;color:var(--accent-cyan)">
+            <td colspan="6" style="font-weight:700;color:var(--accent-cyan)">
               Method: ${escapeHtml(sig)}
               ${m.code ? `(Registers: ${m.code.registersSize}, Ins: ${m.code.insSize}, Outs: ${m.code.outsSize}, Code Units: ${m.code.insnsSize})` : '(NATIVE / ABSTRACT)'}
               ${jniLink ? `<span class="badge badge-ok" style="margin-left:10px">JNI Linked → ${escapeHtml(jniLink.symbol)} @ ${jniLink.address} (${escapeHtml(jniLink.library)})</span>` : ''}
@@ -629,13 +756,25 @@
         `);
         if (m.code) {
           for (const ins of m.code.instructions) {
+            const isBranch = ins.opcode >= 0x32 && ins.opcode <= 0x3d;
+            const isConst = ins.opcode >= 0x12 && ins.opcode <= 0x15;
+            const patchBtns = [];
+            if (isBranch) {
+              patchBtns.push(`<button class="btn" style="padding:2px 6px;font-size:10px;border-color:var(--accent-amber);color:var(--accent-amber)" data-patch-op="invert-branch" data-dex-name="${escapeHtml(cls.dexName)}" data-file-off="${ins.fileByteOffset}" data-unit-len="${ins.unitLen}">Flip Branch</button>`);
+            }
+            if (isConst) {
+              patchBtns.push(`<button class="btn" style="padding:2px 6px;font-size:10px;border-color:var(--accent-emerald);color:var(--accent-emerald)" data-patch-op="const-true" data-dex-name="${escapeHtml(cls.dexName)}" data-file-off="${ins.fileByteOffset}" data-unit-len="${ins.unitLen}">Force 1</button>`);
+            }
+            patchBtns.push(`<button class="btn" style="padding:2px 6px;font-size:10px" data-patch-op="nop" data-dex-name="${escapeHtml(cls.dexName)}" data-file-off="${ins.fileByteOffset}" data-unit-len="${ins.unitLen}">NOP</button>`);
+
             rows.push(`
               <tr>
-                <td style="color:var(--accent-indigo)">+0x${ins.pc.toString(16).padStart(4, '0')}</td>
+                <td style="color:var(--accent-indigo)">+0x${ins.pc.toString(16).padStart(4, '0')} <div style="font-size:9.5px;color:var(--text-muted)">@0x${(ins.fileByteOffset || 0).toString(16)}</div></td>
                 <td style="color:var(--text-muted)">${escapeHtml(ins.rawHex)}</td>
                 <td><span class="badge badge-low">${escapeHtml(ins.fmt)}</span></td>
                 <td style="color:var(--accent-amber);font-weight:700">${escapeHtml(ins.name)}</td>
                 <td>${ highlightSmaliLine(ins.smali) }</td>
+                <td style="white-space:nowrap">${patchBtns.join(' ')}</td>
               </tr>
             `);
           }
@@ -646,17 +785,18 @@
         <div class="dashboard-pad">
           <div class="section-card">
             <div class="section-card-header">
-              <span>Dalvik 16-bit Bytecode Instruction Stream — ${escapeHtml(cls.fullName)}</span>
-              <span>DEX Version ${escapeHtml(State.dexFiles[0]?.version || '038')}</span>
+              <span>Dalvik 16-bit Bytecode Instruction Stream &amp; Live Patcher — ${escapeHtml(cls.fullName)}</span>
+              <span>DEX Version ${escapeHtml(State.dexFiles[0]?.version || '038')} | Inline Bytecode Patching</span>
             </div>
             <table class="data-table">
               <thead>
                 <tr>
-                  <th style="width:90px">Code Offset</th>
-                  <th style="width:160px">Raw 16-Bit Hex</th>
-                  <th style="width:80px">Format</th>
-                  <th style="width:160px">Opcode Mnemonic</th>
-                  <th>Disassembled Smali & Resolved Pool References</th>
+                  <th style="width:95px">Code / File Off</th>
+                  <th style="width:150px">Raw 16-Bit Hex</th>
+                  <th style="width:75px">Format</th>
+                  <th style="width:150px">Opcode Mnemonic</th>
+                  <th>Disassembled Smali &amp; Resolved Pool References</th>
+                  <th style="width:165px">Bytecode Patch</th>
                 </tr>
               </thead>
               <tbody>${rows.join('')}</tbody>
@@ -1299,14 +1439,25 @@
 
     const elf = State.elfFiles[State.selectedElfIdx] || State.elfFiles[0];
     const h = elf.hardening;
+    const archMode = State.elfArchOverride && State.elfArchOverride !== 'AUTO' ? State.elfArchOverride : elf.architecture;
+    const disasmRows = (global.ArgonAdvanced && elf.rawBytes)
+      ? global.ArgonAdvanced.disassembleMultiArchElf(elf.rawBytes, elf, State.elfArchOverride === 'AUTO' ? null : State.elfArchOverride)
+      : (elf.disassembly || []);
+    const regNat = elf.registerNatives || { hasJniOnLoad: false, usesRegisterNatives: false, bindings: [] };
 
     body.innerHTML = `
       <div class="dashboard-pad">
-        <div style="display:flex;align-items:center;justify-content:space-between">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
           <div style="display:flex;align-items:center;gap:12px">
             <span style="font-weight:700;font-size:14px">Select Native Library (.so):</span>
             <select id="elf-file-select" style="background:var(--bg-panel);color:#fff;border:1px solid var(--accent-cyan);padding:6px 12px;border-radius:6px;font-family:var(--font-mono)">
               ${State.elfFiles.map((f, i) => `<option value="${i}" ${i === State.selectedElfIdx ? 'selected' : ''}>${escapeHtml(f.fileName)} (${escapeHtml(f.architecture)}, ${formatBytes(f.fileSize)})</option>`).join('')}
+            </select>
+            <select id="elf-arch-select" style="background:var(--bg-panel);color:var(--accent-amber);border:1px solid var(--border);padding:6px 10px;border-radius:6px;font-family:var(--font-mono)">
+              <option value="AUTO" ${State.elfArchOverride === 'AUTO' ? 'selected' : ''}>ABI: Auto (${escapeHtml(elf.architecture)})</option>
+              <option value="ARM64" ${State.elfArchOverride === 'ARM64' ? 'selected' : ''}>Force ARM64 (AArch64)</option>
+              <option value="ARM32" ${State.elfArchOverride === 'ARM32' ? 'selected' : ''}>Force ARM32 (ARMv7)</option>
+              <option value="X86_64" ${State.elfArchOverride === 'X86_64' ? 'selected' : ''}>Force x86_64 (AMD64)</option>
             </select>
           </div>
           <div style="display:flex;gap:8px">
@@ -1425,8 +1576,8 @@
         <div style="display:grid;grid-template-columns:1.1fr 0.9fr;gap:16px">
           <div class="section-card">
             <div class="section-card-header">
-              <span>⚙️ Native ARM64 (AArch64) Disassembler — .text (${(elf.disassembly || []).length} Instructions)</span>
-              <span>With Symbol &amp; PLT Target Resolution</span>
+              <span>⚙️ Multi-ABI Disassembler [${escapeHtml(archMode)}] — .text (${disasmRows.length} Instructions)</span>
+              <span>ARM64 / ARM32 / x86_64 + PLT Targets</span>
             </div>
             <table class="data-table">
               <thead>
@@ -1439,7 +1590,7 @@
                 </tr>
               </thead>
               <tbody>
-                ${(elf.disassembly || []).map(ins => `
+                ${disasmRows.map(ins => `
                   <tr ${ins.label ? 'style="background:rgba(0, 229, 255, 0.08)"' : ''}>
                     <td style="color:var(--accent-indigo);font-weight:600">${ins.vaddr}</td>
                     <td style="color:var(--text-secondary)">${ins.hexBytes}</td>
@@ -1465,6 +1616,35 @@
             </div>
           </div>
         </div>
+
+        <div class="section-card">
+          <div class="section-card-header">
+            <span>🧩 Dynamic JNI RegisterNatives &amp; JNINativeMethod Table Scanner</span>
+            <span>JNI_OnLoad: ${regNat.hasJniOnLoad ? 'DETECTED' : 'No'} | RegisterNatives: ${regNat.usesRegisterNatives ? 'ACTIVE' : 'No'}</span>
+          </div>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Mechanism</th>
+                <th>Target Java Class</th>
+                <th>Native Method</th>
+                <th>JNI Signature String</th>
+                <th>ELF String Offset</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${(regNat.bindings || []).map(b => `
+                <tr>
+                  <td><span class="badge badge-medium">${escapeHtml(b.mechanism)}</span></td>
+                  <td>${b.className && !b.className.startsWith('(') ? `<span class="tok-xref" data-xref-class="${escapeHtml(b.className)}">${escapeHtml(b.className)}</span>` : escapeHtml(b.className)}</td>
+                  <td style="color:var(--accent-emerald);font-weight:700">${escapeHtml(b.methodName)}()</td>
+                  <td style="font-family:var(--font-mono);color:var(--accent-cyan)">${escapeHtml(b.signature)}</td>
+                  <td style="color:var(--accent-indigo)">${escapeHtml(b.stringOffset)}</td>
+                </tr>
+              `).join('') || '<tr><td colspan="5" style="color:var(--text-muted)">No dynamic RegisterNatives JNINativeMethod string tables found (static Java_* exports active).</td></tr>'}
+            </tbody>
+          </table>
+        </div>
       </div>
     `;
 
@@ -1472,6 +1652,13 @@
     if (sel) {
       sel.addEventListener('change', (e) => {
         State.selectedElfIdx = parseInt(e.target.value, 10) || 0;
+        renderElfNativeInspectorView(body);
+      });
+    }
+    const archSel = document.getElementById('elf-arch-select');
+    if (archSel) {
+      archSel.addEventListener('change', (e) => {
+        State.elfArchOverride = e.target.value || 'AUTO';
         renderElfNativeInspectorView(body);
       });
     }
@@ -1711,6 +1898,46 @@
           </div>
         </div>
 
+        <div style="display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap">
+          <button class="btn btn-primary" id="btn-export-sarif">📄 Export SARIF v2.1.0 (.sarif.json)</button>
+          <button class="btn" id="btn-export-sbom" style="border-color:var(--accent-emerald);color:var(--accent-emerald)">📦 Export CycloneDX v1.5 SBOM (.json)</button>
+          <span style="color:var(--text-muted);font-size:11.5px;margin-left:auto">
+            Worker Telemetry: <strong style="color:var(--accent-cyan)">${escapeHtml(State.workerInfo?.mode || 'sync')}</strong> (${State.workerInfo?.durationMs || 0}ms)
+          </span>
+        </div>
+
+        <div class="section-card">
+          <div class="section-card-header">
+            <span>🎯 MITRE ATT&amp;CK® Mobile Matrix Mapping (${(State.mitreAttack?.techniques || []).length} Techniques)</span>
+            <span>Adversarial Tactic &amp; Technique Coverage</span>
+          </div>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th style="width:110px">Technique ID</th>
+                <th style="width:155px">Tactic</th>
+                <th style="width:240px">Technique Name</th>
+                <th style="width:90px">Severity</th>
+                <th>Static Evidence</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${(State.mitreAttack?.techniques || []).map(t => `
+                <tr>
+                  <td style="color:var(--accent-cyan);font-weight:700">${escapeHtml(t.id)}</td>
+                  <td><span class="badge badge-low">${escapeHtml(t.tactic)}</span></td>
+                  <td style="font-weight:600">${escapeHtml(t.name)}</td>
+                  <td><span class="badge ${badgeClassForSev(t.severity)}">${escapeHtml(t.severity)}</span></td>
+                  <td style="color:var(--text-secondary)">
+                    ${escapeHtml(t.evidence)}
+                    ${t.targetClass ? ` <span class="tok-xref" data-xref-class="${escapeHtml(t.targetClass)}">[Inspect Class]</span>` : ''}
+                  </td>
+                </tr>
+              `).join('') || '<tr><td colspan="5" style="color:var(--text-muted)">No MITRE ATT&amp;CK Mobile techniques matched.</td></tr>'}
+            </tbody>
+          </table>
+        </div>
+
         <div class="section-card">
           <div class="section-card-header">
             <span>🚨 Static Security Audit Findings (${audit.findings.length})</span>
@@ -1751,6 +1978,260 @@
         </div>
       </div>
     `;
+
+    const downloadJsonObj = (obj, filename) => {
+      const blob = new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    };
+    document.getElementById('btn-export-sarif')?.addEventListener('click', () => {
+      if (State.sarif) {
+        const base = (State.apk?.fileName || 'argondex').replace(/\.apk$/i, '');
+        downloadJsonObj(State.sarif, `${base}.sarif.json`);
+        setStatus(`Exported SARIF v2.1.0 report (${State.sarif.runs?.[0]?.results?.length || 0} results).`);
+      }
+    });
+    document.getElementById('btn-export-sbom')?.addEventListener('click', () => {
+      if (State.sbom) {
+        const base = (State.apk?.fileName || 'argondex').replace(/\.apk$/i, '');
+        downloadJsonObj(State.sbom, `${base}_sbom_cyclonedx.json`);
+        setStatus(`Exported CycloneDX v1.5 SBOM (${State.sbom.components?.length || 0} components).`);
+      }
+    });
+  }
+
+  // -------------------- VIEW 7.5: APK VERSION BINDIFF & ROUND-TRIP BYTECODE PATCHER --------------------
+  function applyLiveBytecodePatch(dexName, fileByteOffset, patchType, unitLen) {
+    const dexIdx = State.dexFiles.findIndex(d => d.dexName === dexName);
+    if (dexIdx === -1) throw new Error(`DEX not found: ${dexName}`);
+    const dex = State.dexFiles[dexIdx];
+    const patchRes = global.ArgonDex.patchDexInstruction(dex.rawBytes, fileByteOffset, { type: patchType, unitLen });
+    const reparsed = global.ArgonDex.parseDexFile(patchRes.bytes, dex.dexName);
+    State.dexFiles[dexIdx] = reparsed;
+
+    // Rebuild class index while keeping current selected class synced to newly patched AST
+    const prevSelFull = State.selectedClass ? State.selectedClass.fullName : null;
+    const allClasses = [];
+    const classByName = new Map();
+    for (const d of State.dexFiles) {
+      for (const c of d.classes) {
+        allClasses.push(c);
+        classByName.set(c.fullName, c);
+        if (!classByName.has(c.simpleName)) classByName.set(c.simpleName, c);
+      }
+    }
+    State.allClasses = allClasses;
+    State.classByName = classByName;
+    if (prevSelFull && classByName.has(prevSelFull)) {
+      State.selectedClass = classByName.get(prevSelFull);
+    }
+
+    State.patchHistory.push({
+      dexName: dex.dexName,
+      fileByteOffset,
+      patchType,
+      oldWordsHex: patchRes.oldWordsHex,
+      newWordsHex: patchRes.newWordsHex,
+      checksumHex: patchRes.checksumHex,
+      signatureHex: patchRes.signatureHex,
+      timestamp: new Date().toISOString()
+    });
+
+    setStatus(`Patched ${dex.dexName} @0x${fileByteOffset.toString(16)} (${patchType}) | New Adler-32: ${patchRes.checksumHex}`);
+    if (typeof document !== 'undefined' && document.getElementById('workbench-body')) {
+      renderAll();
+    }
+    return patchRes;
+  }
+
+  async function downloadPatchedApk() {
+    if (!State.apk) return;
+    const patchedDexMap = new Map(State.dexFiles.map(d => [d.dexName, d.rawBytes]));
+    const zipEntries = [];
+    for (const entry of State.apk.entries) {
+      // Strip stale v1 signatures since modified bytecode invalidates original JAR manifest digests
+      if (/^META-INF\/.*\.(SF|RSA|DSA|EC)$/i.test(entry.name) || entry.name === 'META-INF/MANIFEST.MF') {
+        continue;
+      }
+      if (patchedDexMap.has(entry.name)) {
+        zipEntries.push({ name: entry.name, data: patchedDexMap.get(entry.name) });
+      } else {
+        zipEntries.push({ name: entry.name, data: await entry.extract() });
+      }
+    }
+    const apkOut = global.ArgonZip.buildZipArchive(zipEntries);
+    const blob = new Blob([apkOut], { type: 'application/vnd.android.package-archive' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const baseName = State.apk.fileName.replace(/\.apk$/i, '');
+    a.download = `${baseName}_patched_unsigned.apk`;
+    a.click();
+    URL.revokeObjectURL(url);
+    setStatus(`Rebuilt patched APK (${formatBytes(apkOut.length)}) with updated DEX SHA-1 & Adler-32 checksums (ready for apksigner).`);
+  }
+
+  function renderDiffAndPatchView(body) {
+    const patches = State.patchHistory || [];
+    const diff = State.diffResult;
+    const modList = diff ? diff.classes.modified : [];
+    const selectedMod = modList[State.diffSelectedClassIdx] || modList[0] || null;
+
+    const renderUnifiedDiffHtml = (text) => {
+      return String(text || '').split('\n').map(line => {
+        if (line.startsWith('+')) return `<div style="background:rgba(16,185,129,0.16);color:#6ee7b7;padding:1px 8px;font-family:var(--font-mono);font-size:12px">${escapeHtml(line)}</div>`;
+        if (line.startsWith('-')) return `<div style="background:rgba(244,63,94,0.16);color:#fda4af;padding:1px 8px;font-family:var(--font-mono);font-size:12px">${escapeHtml(line)}</div>`;
+        return `<div style="color:var(--text-secondary);padding:1px 8px;font-family:var(--font-mono);font-size:12px">${escapeHtml(line)}</div>`;
+      }).join('');
+    };
+
+    body.innerHTML = `
+      <div class="dashboard-pad">
+        <div class="section-card">
+          <div class="section-card-header">
+            <span>🩹 Round-Trip DEX Bytecode Patcher &amp; Rebuilt APK Exporter (${patches.length} Active Patches)</span>
+            <button class="btn btn-primary" id="btn-download-patched-apk" style="padding:4px 12px;font-size:11.5px">📦 Rebuild &amp; Download Patched APK</button>
+          </div>
+          <div style="padding:10px 14px;color:var(--text-secondary);font-size:12px;border-bottom:1px solid var(--border)">
+            Tip: Open <strong>Code &amp; Smali Studio → Bytecode Hex</strong> submode to patch live Dalvik instructions (<em>Flip Branch</em>, <em>Force 1</em>, <em>NOP</em>). SHA-1 (<code>0x0C..0x1F</code>) and Adler-32 (<code>0x08..0x0B</code>) are automatically recalculated.
+          </div>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>DEX File</th>
+                <th>File Offset</th>
+                <th>Patch Op</th>
+                <th>Original Hex → Patched Hex</th>
+                <th>Recalculated Adler-32</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${patches.map(p => `
+                <tr>
+                  <td style="color:var(--accent-cyan)">${escapeHtml(p.dexName)}</td>
+                  <td style="color:var(--accent-indigo)">0x${p.fileByteOffset.toString(16)}</td>
+                  <td><span class="badge badge-medium">${escapeHtml(p.patchType)}</span></td>
+                  <td style="font-family:var(--font-mono)"><span style="color:var(--accent-rose)">${escapeHtml(p.oldWordsHex)}</span> → <span style="color:var(--accent-emerald)">${escapeHtml(p.newWordsHex)}</span></td>
+                  <td style="color:var(--accent-amber);font-weight:700">${escapeHtml(p.checksumHex)}</td>
+                </tr>
+              `).join('') || '<tr><td colspan="5" style="color:var(--text-muted)">No live bytecode patches applied yet. Switch to Code Studio → Bytecode Hex to patch an instruction.</td></tr>'}
+            </tbody>
+          </table>
+        </div>
+
+        <div class="section-card">
+          <div class="section-card-header">
+            <span>⚖️ APK Version BinDiff &amp; Tamper Comparison Engine</span>
+            <div style="display:flex;gap:8px">
+              <button class="btn btn-primary" id="btn-synth-diff" style="padding:4px 10px;font-size:11px">⚡ Compare vs Baseline (v2.4.0)</button>
+              <button class="btn" id="btn-load-diff-apk" style="padding:4px 10px;font-size:11px">📂 Load Comparison Baseline APK</button>
+              <input type="file" id="diff-baseline-input" accept=".apk,.dex" style="display:none" />
+            </div>
+          </div>
+          ${diff ? `
+            <div style="padding:12px 14px">
+              <div class="stats-grid" style="margin-bottom:12px">
+                <div class="stat-card">
+                  <span class="label">Baseline → Target</span>
+                  <span class="value" style="font-size:14px;color:var(--accent-cyan)">${escapeHtml(diff.baselineName)} → ${escapeHtml(diff.targetName)}</span>
+                  <span class="sub">Version: ${escapeHtml(diff.versionChange.from)} → ${escapeHtml(diff.versionChange.to)}</span>
+                </div>
+                <div class="stat-card">
+                  <span class="label">Permissions Delta</span>
+                  <span class="value" style="font-size:16px">+${diff.permissions.added.length} / -${diff.permissions.removed.length}</span>
+                  <span class="sub">${escapeHtml(diff.permissions.added.join(', ') || 'No added permissions')}</span>
+                </div>
+                <div class="stat-card">
+                  <span class="label">DEX Classes Changed</span>
+                  <span class="value" style="font-size:16px;color:var(--accent-amber)">${modList.length} Modified</span>
+                  <span class="sub">+${diff.classes.added.length} added | -${diff.classes.removed.length} removed | ${diff.classes.unchangedCount} unchanged</span>
+                </div>
+                <div class="stat-card">
+                  <span class="label">Native Symbols Delta</span>
+                  <span class="value" style="font-size:16px">+${diff.nativeSymbols.added.length} / -${diff.nativeSymbols.removed.length}</span>
+                  <span class="sub">ELF .dynsym export comparison</span>
+                </div>
+              </div>
+              <div style="display:flex;gap:12px;align-items:center;margin-bottom:10px">
+                <span style="font-weight:700">Modified Class Unified Java AST Diff:</span>
+                <select id="diff-class-select" style="background:var(--bg-panel);color:#fff;border:1px solid var(--border);padding:5px 10px;border-radius:6px;font-family:var(--font-mono)">
+                  ${modList.map((m, idx) => `<option value="${idx}" ${idx === State.diffSelectedClassIdx ? 'selected' : ''}>${escapeHtml(m.fullName)} (+${m.addedLines}/-${m.removedLines})</option>`).join('')}
+                </select>
+              </div>
+              <div class="code-scroll-box" style="max-height:360px;padding:8px 0">
+                ${selectedMod ? renderUnifiedDiffHtml(selectedMod.unifiedDiff) : '<div style="padding:12px;color:var(--text-muted)">All DEX classes match the baseline identically!</div>'}
+              </div>
+            </div>
+          ` : `
+            <div style="padding:18px;color:var(--text-secondary)">
+              Click <strong>Compare vs Baseline (v2.4.0)</strong> for an instant diff against a synthesized previous release, or load a second <code>.apk</code> file to diff permissions, classes, native symbols, and decompiled Java ASTs.
+            </div>
+          `}
+        </div>
+      </div>
+    `;
+
+    document.getElementById('btn-download-patched-apk')?.addEventListener('click', downloadPatchedApk);
+    document.getElementById('btn-synth-diff')?.addEventListener('click', () => {
+      const targetBundle = {
+        apk: State.apk,
+        fileName: State.apk.fileName,
+        manifestInfo: State.manifestInfo,
+        dexFiles: State.dexFiles,
+        elfFiles: State.elfFiles,
+        arsc: State.arsc
+      };
+      const baseBundle = global.ArgonAdvanced.synthesizeBaselineBundle(targetBundle);
+      State.diffBaseline = baseBundle;
+      State.diffResult = global.ArgonAdvanced.computeApkDiff(baseBundle, targetBundle);
+      State.diffSelectedClassIdx = 0;
+      renderDiffAndPatchView(body);
+    });
+
+    const diffInput = document.getElementById('diff-baseline-input');
+    document.getElementById('btn-load-diff-apk')?.addEventListener('click', () => diffInput?.click());
+    diffInput?.addEventListener('change', async (e) => {
+      const f = e.target.files?.[0];
+      if (!f) return;
+      const ab = await f.arrayBuffer();
+      const baseApk = await global.ArgonZip.parseApkArchive(ab, f.name);
+      const baseDexFiles = [];
+      for (const entry of baseApk.entries.filter(x => x.name.endsWith('.dex'))) {
+        baseDexFiles.push(global.ArgonDex.parseDexFile(await entry.extract(), entry.name));
+      }
+      let baseMf = null;
+      const mfEntry = baseApk.entryMap.get('AndroidManifest.xml');
+      if (mfEntry) {
+        const axml = global.ArgonAxml.parseAxml(await mfEntry.extract(), State.arsc);
+        baseMf = global.ArgonAxml.analyzeManifest(axml);
+      }
+      const baseElfs = [];
+      for (const so of baseApk.entries.filter(x => x.name.endsWith('.so'))) {
+        baseElfs.push(global.ArgonElfSecurity.parseElfBinary(await so.extract(), so.name));
+      }
+      const baseBundle = { fileName: f.name, apk: baseApk, manifestInfo: baseMf, dexFiles: baseDexFiles, elfFiles: baseElfs };
+      const targetBundle = {
+        apk: State.apk,
+        fileName: State.apk.fileName,
+        manifestInfo: State.manifestInfo,
+        dexFiles: State.dexFiles,
+        elfFiles: State.elfFiles,
+        arsc: State.arsc
+      };
+      State.diffBaseline = baseBundle;
+      State.diffResult = global.ArgonAdvanced.computeApkDiff(baseBundle, targetBundle);
+      State.diffSelectedClassIdx = 0;
+      renderDiffAndPatchView(body);
+    });
+
+    document.getElementById('diff-class-select')?.addEventListener('change', (e) => {
+      State.diffSelectedClassIdx = parseInt(e.target.value, 10) || 0;
+      renderDiffAndPatchView(body);
+    });
   }
 
   // -------------------- VIEW 8: BINARY HEX & ASCII INSPECTOR --------------------
@@ -2040,10 +2521,29 @@
           sha256: State.apk.sha256,
           manifest: State.manifestInfo,
           securityAudit: State.securityAudit,
+          mitreAttack: State.mitreAttack,
           taintFlows: State.taintFlows,
           decryptedStrings: State.deobfData ? State.deobfData.decryptedStrings : [],
-          nativeLibraries: State.elfFiles
+          nativeLibraries: State.elfFiles.map(e => ({
+            fileName: e.fileName,
+            architecture: e.architecture,
+            hardening: e.hardening,
+            jniMethods: e.jniMethods,
+            registerNatives: e.registerNatives
+          }))
         }, null, 2))
+      });
+    }
+    if (State.sarif) {
+      outFiles.push({
+        name: 'sarif_report.sarif.json',
+        data: encoder.encode(JSON.stringify(State.sarif, null, 2))
+      });
+    }
+    if (State.sbom) {
+      outFiles.push({
+        name: 'sbom_cyclonedx.json',
+        data: encoder.encode(JSON.stringify(State.sbom, null, 2))
       });
     }
 
@@ -2163,6 +2663,21 @@
         return;
       }
 
+      const patchBtn = e.target.closest('[data-patch-op]');
+      if (patchBtn) {
+        try {
+          applyLiveBytecodePatch(
+            patchBtn.dataset.dexName,
+            parseInt(patchBtn.dataset.fileOff, 10),
+            patchBtn.dataset.patchOp,
+            parseInt(patchBtn.dataset.unitLen, 10) || 1
+          );
+        } catch (err) {
+          setStatus(`Bytecode patch failed: ${err.message}`);
+        }
+        return;
+      }
+
       const xrefEl = e.target.closest('[data-xref-class]');
       if (xrefEl) {
         jumpToClass(xrefEl.dataset.xrefClass);
@@ -2260,7 +2775,9 @@
     escapeHtml,
     highlightJavaLine,
     highlightSmaliLine,
-    highlightXmlLine
+    highlightXmlLine,
+    createInlineAnalysisWorker,
+    applyLiveBytecodePatch
   };
 
   if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {

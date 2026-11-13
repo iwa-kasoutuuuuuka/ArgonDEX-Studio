@@ -1,0 +1,608 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "ArgonDEX Studio",
+          "version": "3.5.0",
+          "informationUri": "https://github.com/iwa-kasoutuuuuuka/ArgonDEX-Studio",
+          "rules": [
+            {
+              "id": "CWE-489___MASVS-RESILIENCE-2",
+              "name": "Manifest / Build Config",
+              "shortDescription": {
+                "text": "Application is Debuggable (android:debuggable=\"true\")"
+              },
+              "fullDescription": {
+                "text": "Enabling android:debuggable in production allows local attackers or untrusted apps with shell access to attach JDWP debuggers, dump memory, and execute arbitrary code in the app context."
+              },
+              "help": {
+                "text": "Set android:debuggable=\"false\" in release build variants."
+              },
+              "properties": {
+                "cwe": "CWE-489 / MASVS-RESILIENCE-2",
+                "severity": "CRITICAL"
+              }
+            },
+            {
+              "id": "CWE-319___MASVS-NETWORK-1",
+              "name": "Network Security",
+              "shortDescription": {
+                "text": "Cleartext HTTP Traffic Permitted (android:usesCleartextTraffic=\"true\")"
+              },
+              "fullDescription": {
+                "text": "The application explicitly permits unencrypted HTTP network connections, exposing sensitive API traffic to Man-in-the-Middle (MitM) interception."
+              },
+              "help": {
+                "text": "Disable usesCleartextTraffic and enforce TLS 1.2/1.3 via network_security_config.xml."
+              },
+              "properties": {
+                "cwe": "CWE-319 / MASVS-NETWORK-1",
+                "severity": "HIGH"
+              }
+            },
+            {
+              "id": "CWE-530___MASVS-STORAGE-2",
+              "name": "Data Storage",
+              "shortDescription": {
+                "text": "ADB Backup Enabled (android:allowBackup=\"true\")"
+              },
+              "fullDescription": {
+                "text": "Allowing full application data backup via adb allows anyone with USB debugging access to extract SharedPreferences, SQLite databases, and tokens."
+              },
+              "help": {
+                "text": "Set android:allowBackup=\"false\" or configure restrictive <data-extraction-rules>."
+              },
+              "properties": {
+                "cwe": "CWE-530 / MASVS-STORAGE-2",
+                "severity": "MEDIUM"
+              }
+            },
+            {
+              "id": "CWE-926___MASVS-PLATFORM-1",
+              "name": "IPC / Component Exposure",
+              "shortDescription": {
+                "text": "Exported Service Without Permission Restriction: com.argon.vault.net.VaultSyncService"
+              },
+              "fullDescription": {
+                "text": "Component \"com.argon.vault.net.VaultSyncService\" is exported and accessible to any third-party app on the device without requiring a custom or signature permission."
+              },
+              "help": {
+                "text": "Set android:exported=\"false\" if internal, or enforce a signature-level android:permission."
+              },
+              "properties": {
+                "cwe": "CWE-926 / MASVS-PLATFORM-1",
+                "severity": "HIGH"
+              }
+            },
+            {
+              "id": "CWE-79___MASVS-PLATFORM-2",
+              "name": "WebView Security",
+              "shortDescription": {
+                "text": "WebView JavaScript Enabled in MainActivity.initWebViewPortal()"
+              },
+              "fullDescription": {
+                "text": "Enabling JavaScript in WebView can lead to XSS or bridge exploitation if untrusted URLs or intent extras are loaded."
+              },
+              "help": {
+                "text": "Restrict WebView navigation to trusted HTTPS origins and disable file/universal access."
+              },
+              "properties": {
+                "cwe": "CWE-79 / MASVS-PLATFORM-2",
+                "severity": "MEDIUM"
+              }
+            },
+            {
+              "id": "CWE-749___MASVS-PLATFORM-2",
+              "name": "WebView Security",
+              "shortDescription": {
+                "text": "WebView Native JavaScript Bridge Exposed in MainActivity.initWebViewPortal()"
+              },
+              "fullDescription": {
+                "text": "addJavascriptInterface exposes Java object methods to JavaScript executing inside the WebView."
+              },
+              "help": {
+                "text": "Ensure @JavascriptInterface methods validate caller origin and only load pinned HTTPS content."
+              },
+              "properties": {
+                "cwe": "CWE-749 / MASVS-PLATFORM-2",
+                "severity": "HIGH"
+              }
+            },
+            {
+              "id": "CWE-327___MASVS-CRYPTO-1",
+              "name": "Cryptography",
+              "shortDescription": {
+                "text": "Insecure Cipher Mode (AES/ECB/PKCS5Padding) in CryptoEngine.encryptPayload()"
+              },
+              "fullDescription": {
+                "text": "ECB mode or DES cipher (\"AES/ECB/PKCS5Padding\") lacks semantic security and leaks plaintext block patterns."
+              },
+              "help": {
+                "text": "Use AES/GCM/NoPadding with a 96-bit random IV and 128-bit authentication tag."
+              },
+              "properties": {
+                "cwe": "CWE-327 / MASVS-CRYPTO-1",
+                "severity": "HIGH"
+              }
+            },
+            {
+              "id": "CWE-328___MASVS-CRYPTO-1",
+              "name": "Cryptography",
+              "shortDescription": {
+                "text": "Weak Hash Algorithm (MD5) in CryptoEngine.encryptPayload()"
+              },
+              "fullDescription": {
+                "text": "Cryptographically broken digest \"MD5\" used in com.argon.vault.crypto.CryptoEngine.encryptPayload()."
+              },
+              "help": {
+                "text": "Use SHA-256, SHA-384, or SHA-512."
+              },
+              "properties": {
+                "cwe": "CWE-328 / MASVS-CRYPTO-1",
+                "severity": "MEDIUM"
+              }
+            },
+            {
+              "id": "CWE-89___MASVS-CODE-4",
+              "name": "SQL Injection",
+              "shortDescription": {
+                "text": "Raw SQL Query Execution in VaultDatabase.queryVaultSecret()"
+              },
+              "fullDescription": {
+                "text": "Direct invocation of rawQuery() detected in com.argon.vault.db.VaultDatabase.queryVaultSecret(). If user input is concatenated into the SQL string, local SQL injection is possible."
+              },
+              "help": {
+                "text": "Use parameterized queries with \"?\" placeholders or SQLiteStatement bindings."
+              },
+              "properties": {
+                "cwe": "CWE-89 / MASVS-CODE-4",
+                "severity": "HIGH"
+              }
+            },
+            {
+              "id": "CWE-121___MASVS-CODE-3",
+              "name": "Native Binary Hardening",
+              "shortDescription": {
+                "text": "Missing Stack Canary in lib/arm64-v8a/libnative-vault.so"
+              },
+              "fullDescription": {
+                "text": "Native library lib/arm64-v8a/libnative-vault.so (ARM64 (AArch64)) does not reference __stack_chk_fail stack protector symbols."
+              },
+              "help": {
+                "text": "Compile NDK C/C++ code with -fstack-protector-strong."
+              },
+              "properties": {
+                "cwe": "CWE-121 / MASVS-CODE-3",
+                "severity": "LOW"
+              }
+            },
+            {
+              "id": "TAINT_Cross-Site_Scripting___Arbitrary_Navigation__CWE-79_",
+              "name": "Cross-Site Scripting / Arbitrary Navigation (CWE-79)",
+              "shortDescription": {
+                "text": "Cross-Site Scripting / Arbitrary Navigation (CWE-79)"
+              },
+              "fullDescription": {
+                "text": "Taint flow from Cleartext HTTP Endpoint (\"http://api.argonvault.internal/v2/sy...\") to WebView.loadUrl() Sink (WebView.loadUrl)"
+              },
+              "properties": {
+                "severity": "HIGH"
+              }
+            },
+            {
+              "id": "TAINT_Unvalidated_Input_to_Native_TEE_Key_Derivation__CWE-20___MASVS-CRYPTO-1_",
+              "name": "Unvalidated Input to Native TEE Key Derivation (CWE-20 / MASVS-CRYPTO-1)",
+              "shortDescription": {
+                "text": "Unvalidated Input to Native TEE Key Derivation (CWE-20 / MASVS-CRYPTO-1)"
+              },
+              "fullDescription": {
+                "text": "Taint flow from Method Parameter arg0 (CryptoEngine.encryptPayload) to JNI Hardware Key Derivation Sink (NativeBridge.deriveHardwareKey)"
+              },
+              "properties": {
+                "severity": "HIGH"
+              }
+            },
+            {
+              "id": "TAINT_SQL_Injection__CWE-89_",
+              "name": "SQL Injection (CWE-89)",
+              "shortDescription": {
+                "text": "SQL Injection (CWE-89)"
+              },
+              "fullDescription": {
+                "text": "Taint flow from Method Parameter arg1 (VaultDatabase.queryVaultSecret) to SQLite rawQuery() Sink (SQLiteDatabase.rawQuery)"
+              },
+              "properties": {
+                "severity": "CRITICAL"
+              }
+            }
+          ]
+        }
+      },
+      "originalUriBaseIds": {
+        "SRCROOT": {
+          "uri": "apk://ArgonVault_v2.4.1_sample.apk/"
+        }
+      },
+      "results": [
+        {
+          "ruleId": "CWE-489___MASVS-RESILIENCE-2",
+          "level": "error",
+          "message": {
+            "text": "Application is Debuggable (android:debuggable=\"true\"): Enabling android:debuggable in production allows local attackers or untrusted apps with shell access to attach JDWP debuggers, dump memory, and execute arbitrary code in the app context."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "AndroidManifest.xml"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "properties": {
+            "severity": "CRITICAL",
+            "cwe": "CWE-489 / MASVS-RESILIENCE-2"
+          }
+        },
+        {
+          "ruleId": "CWE-319___MASVS-NETWORK-1",
+          "level": "error",
+          "message": {
+            "text": "Cleartext HTTP Traffic Permitted (android:usesCleartextTraffic=\"true\"): The application explicitly permits unencrypted HTTP network connections, exposing sensitive API traffic to Man-in-the-Middle (MitM) interception."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "AndroidManifest.xml"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "properties": {
+            "severity": "HIGH",
+            "cwe": "CWE-319 / MASVS-NETWORK-1"
+          }
+        },
+        {
+          "ruleId": "CWE-530___MASVS-STORAGE-2",
+          "level": "warning",
+          "message": {
+            "text": "ADB Backup Enabled (android:allowBackup=\"true\"): Allowing full application data backup via adb allows anyone with USB debugging access to extract SharedPreferences, SQLite databases, and tokens."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "AndroidManifest.xml"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "properties": {
+            "severity": "MEDIUM",
+            "cwe": "CWE-530 / MASVS-STORAGE-2"
+          }
+        },
+        {
+          "ruleId": "CWE-926___MASVS-PLATFORM-1",
+          "level": "error",
+          "message": {
+            "text": "Exported Service Without Permission Restriction: com.argon.vault.net.VaultSyncService: Component \"com.argon.vault.net.VaultSyncService\" is exported and accessible to any third-party app on the device without requiring a custom or signature permission."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/main/java/com/argon/vault/net/VaultSyncService.java"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "properties": {
+            "severity": "HIGH",
+            "cwe": "CWE-926 / MASVS-PLATFORM-1"
+          }
+        },
+        {
+          "ruleId": "CWE-926___MASVS-PLATFORM-1",
+          "level": "error",
+          "message": {
+            "text": "Exported ContentProvider Without Permission Restriction: com.argon.vault.db.VaultContentProvider: Component \"com.argon.vault.db.VaultContentProvider\" is exported and accessible to any third-party app on the device without requiring a custom or signature permission."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/main/java/com/argon/vault/db/VaultContentProvider.java"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "properties": {
+            "severity": "HIGH",
+            "cwe": "CWE-926 / MASVS-PLATFORM-1"
+          }
+        },
+        {
+          "ruleId": "CWE-319___MASVS-NETWORK-1",
+          "level": "warning",
+          "message": {
+            "text": "Hardcoded Cleartext HTTP Endpoint: http://api.argonvault.internal/v2/sync?token=: Found unencrypted HTTP URL \"http://api.argonvault.internal/v2/sync?token=\" in classes.dex string pool."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "classes.dex"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "properties": {
+            "severity": "MEDIUM",
+            "cwe": "CWE-319 / MASVS-NETWORK-1"
+          }
+        },
+        {
+          "ruleId": "CWE-79___MASVS-PLATFORM-2",
+          "level": "warning",
+          "message": {
+            "text": "WebView JavaScript Enabled in MainActivity.initWebViewPortal(): Enabling JavaScript in WebView can lead to XSS or bridge exploitation if untrusted URLs or intent extras are loaded."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/main/java/com/argon/vault/MainActivity.java"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "properties": {
+            "severity": "MEDIUM",
+            "cwe": "CWE-79 / MASVS-PLATFORM-2"
+          }
+        },
+        {
+          "ruleId": "CWE-749___MASVS-PLATFORM-2",
+          "level": "error",
+          "message": {
+            "text": "WebView Native JavaScript Bridge Exposed in MainActivity.initWebViewPortal(): addJavascriptInterface exposes Java object methods to JavaScript executing inside the WebView."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/main/java/com/argon/vault/MainActivity.java"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "properties": {
+            "severity": "HIGH",
+            "cwe": "CWE-749 / MASVS-PLATFORM-2"
+          }
+        },
+        {
+          "ruleId": "CWE-327___MASVS-CRYPTO-1",
+          "level": "error",
+          "message": {
+            "text": "Insecure Cipher Mode (AES/ECB/PKCS5Padding) in CryptoEngine.encryptPayload(): ECB mode or DES cipher (\"AES/ECB/PKCS5Padding\") lacks semantic security and leaks plaintext block patterns."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/main/java/com/argon/vault/crypto/CryptoEngine.java"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "properties": {
+            "severity": "HIGH",
+            "cwe": "CWE-327 / MASVS-CRYPTO-1"
+          }
+        },
+        {
+          "ruleId": "CWE-328___MASVS-CRYPTO-1",
+          "level": "warning",
+          "message": {
+            "text": "Weak Hash Algorithm (MD5) in CryptoEngine.encryptPayload(): Cryptographically broken digest \"MD5\" used in com.argon.vault.crypto.CryptoEngine.encryptPayload()."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/main/java/com/argon/vault/crypto/CryptoEngine.java"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "properties": {
+            "severity": "MEDIUM",
+            "cwe": "CWE-328 / MASVS-CRYPTO-1"
+          }
+        },
+        {
+          "ruleId": "CWE-89___MASVS-CODE-4",
+          "level": "error",
+          "message": {
+            "text": "Raw SQL Query Execution in VaultDatabase.queryVaultSecret(): Direct invocation of rawQuery() detected in com.argon.vault.db.VaultDatabase.queryVaultSecret(). If user input is concatenated into the SQL string, local SQL injection is possible."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/main/java/com/argon/vault/db/VaultDatabase.java"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "properties": {
+            "severity": "HIGH",
+            "cwe": "CWE-89 / MASVS-CODE-4"
+          }
+        },
+        {
+          "ruleId": "CWE-327___MASVS-CRYPTO-1",
+          "level": "error",
+          "message": {
+            "text": "Insecure Cipher Mode (AES/ECB/PKCS5Padding) in a.<init>(): ECB mode or DES cipher (\"AES/ECB/PKCS5Padding\") lacks semantic security and leaks plaintext block patterns."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/main/java/com/argon/vault/obf/a.java"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "properties": {
+            "severity": "HIGH",
+            "cwe": "CWE-327 / MASVS-CRYPTO-1"
+          }
+        },
+        {
+          "ruleId": "CWE-121___MASVS-CODE-3",
+          "level": "note",
+          "message": {
+            "text": "Missing Stack Canary in lib/arm64-v8a/libnative-vault.so: Native library lib/arm64-v8a/libnative-vault.so (ARM64 (AArch64)) does not reference __stack_chk_fail stack protector symbols."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "lib/arm64-v8a/libnative-vault.so"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "properties": {
+            "severity": "LOW",
+            "cwe": "CWE-121 / MASVS-CODE-3"
+          }
+        },
+        {
+          "ruleId": "TAINT_Cross-Site_Scripting___Arbitrary_Navigation__CWE-79_",
+          "level": "error",
+          "message": {
+            "text": "Cross-Site Scripting / Arbitrary Navigation (CWE-79) in com.argon.vault.MainActivity.initWebViewPortal(): Cleartext HTTP Endpoint (\"http://api.argonvault.internal/v2/sy...\") -> WebView.loadUrl() Sink (WebView.loadUrl)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/main/java/com/argon/vault/MainActivity.java"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "TAINT_Unvalidated_Input_to_Native_TEE_Key_Derivation__CWE-20___MASVS-CRYPTO-1_",
+          "level": "error",
+          "message": {
+            "text": "Unvalidated Input to Native TEE Key Derivation (CWE-20 / MASVS-CRYPTO-1) in com.argon.vault.crypto.CryptoEngine.encryptPayload(): Method Parameter arg0 (CryptoEngine.encryptPayload) -> JNI Hardware Key Derivation Sink (NativeBridge.deriveHardwareKey)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/main/java/com/argon/vault/crypto/CryptoEngine.java"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "TAINT_SQL_Injection__CWE-89_",
+          "level": "error",
+          "message": {
+            "text": "SQL Injection (CWE-89) in com.argon.vault.db.VaultDatabase.queryVaultSecret(): Method Parameter arg1 (VaultDatabase.queryVaultSecret) -> SQLite rawQuery() Sink (SQLiteDatabase.rawQuery)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/main/java/com/argon/vault/db/VaultDatabase.java"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "TAINT_Unvalidated_Input_to_Native_TEE_Key_Derivation__CWE-20___MASVS-CRYPTO-1_",
+          "level": "error",
+          "message": {
+            "text": "Unvalidated Input to Native TEE Key Derivation (CWE-20 / MASVS-CRYPTO-1) in com.argon.vault.obf.a.a(): Method Parameter arg0 (a.a) -> JNI Hardware Key Derivation Sink (NativeBridge.deriveHardwareKey)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/main/java/com/argon/vault/obf/a.java"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

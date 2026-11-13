@@ -250,6 +250,127 @@ async function test(name, fn) {
     assert(sqliFlow.source.includes('Method Parameter arg1'), `Expected SQLi source to be Method Parameter arg1, got: ${sqliFlow.source}`);
   });
 
+  await test('19. Round-Trip DEX Bytecode Patcher & Pure-JS SHA-1 / Adler-32 Checksum Recalculator', async () => {
+    const dexBytes = await apk.entryMap.get('classes.dex').extract();
+    // Verify built sample DEX already has valid non-zero SHA-1 signature at bytes 12..31
+    const origSha1 = globalThis.ArgonZip.sha1Hex(dexBytes, 32, dexBytes.length);
+    const hdrSha1 = Array.from(dexBytes.subarray(12, 32)).map(b => b.toString(16).padStart(2, '0')).join('');
+    assert.strictEqual(origSha1, hdrSha1, 'Expected generated DEX SHA-1 header (0x0C..0x1F) to match content');
+
+    let targetInsn = null;
+    for (const cls of dex.classes) {
+      for (const m of cls.allMethods) {
+        if (!m.code) continue;
+        targetInsn = m.code.instructions.find(i => i.opcode >= 0x32 && i.opcode <= 0x3d);
+        if (targetInsn) break;
+      }
+      if (targetInsn) break;
+    }
+    assert(targetInsn && Number.isInteger(targetInsn.fileByteOffset), 'Expected conditional branch with fileByteOffset');
+
+    const patched = globalThis.ArgonDex.patchDexInstruction(dexBytes, targetInsn.fileByteOffset, {
+      type: 'invert-branch',
+      unitLen: targetInsn.unitLen
+    });
+    assert.notStrictEqual(patched.oldWordsHex, patched.newWordsHex, 'Expected branch opcode bytes to change after invert-branch');
+
+    const expectedSha1 = globalThis.ArgonZip.sha1Hex(patched.bytes, 32, patched.bytes.length);
+    assert.strictEqual(patched.signatureHex, expectedSha1, 'Expected recalculated SHA-1 digest');
+
+    const reparsedDex = globalThis.ArgonDex.parseDexFile(patched.bytes, 'classes.dex');
+    assert.strictEqual(reparsedDex.checksum, patched.checksumHex, 'Expected reparsed DEX Adler-32 checksum to match');
+    assert.strictEqual(reparsedDex.signatureHex, patched.signatureHex, 'Expected reparsed DEX SHA-1 signature to match');
+
+    // Round-trip repack into APK ZIP and re-parse
+    const rebuiltApk = globalThis.ArgonZip.buildZipArchive([{ name: 'classes.dex', data: patched.bytes }]);
+    const reparsedApk = await globalThis.ArgonZip.parseApkArchive(rebuiltApk.buffer, 'patched.apk');
+    assert(reparsedApk.entryMap.has('classes.dex'), 'Expected rebuilt APK to contain classes.dex');
+  });
+
+  await test('20. APK Version BinDiff & Line-Level Unified Java AST Diff Engine', async () => {
+    const manifestEntry = apk.entryMap.get('AndroidManifest.xml');
+    const axml = globalThis.ArgonAxml.parseAxml(await manifestEntry.extract(), arsc);
+    const mfInfo = globalThis.ArgonAxml.analyzeManifest(axml);
+    const soBytes = await apk.entryMap.get('lib/arm64-v8a/libnative-vault.so').extract();
+    const parsedElf = globalThis.ArgonElfSecurity.parseElfBinary(soBytes, 'lib/arm64-v8a/libnative-vault.so');
+
+    const currentBundle = { apk, manifestInfo: mfInfo, dexFiles: [dex], elfFiles: [parsedElf], arsc };
+    const baselineBundle = globalThis.ArgonAdvanced.synthesizeBaselineBundle(currentBundle);
+    const diff = globalThis.ArgonAdvanced.computeApkDiff(baselineBundle, currentBundle);
+
+    assert(diff.permissions.added.length >= 1, 'Expected permissions delta between baseline and target');
+    assert(diff.classes.modified.length >= 1, 'Expected modified Java class diff');
+    assert(diff.classes.modified[0].unifiedDiff.includes('--- '), 'Expected unified diff header');
+    assert(diff.nativeSymbols.added.length >= 1, 'Expected native symbol export diff');
+  });
+
+  await test('21. MITRE ATT&CK Mobile Matrix, SARIF v2.1.0 & CycloneDX v1.5 SBOM Exporters', async () => {
+    const manifestEntry = apk.entryMap.get('AndroidManifest.xml');
+    const axml = globalThis.ArgonAxml.parseAxml(await manifestEntry.extract(), arsc);
+    const mfInfo = globalThis.ArgonAxml.analyzeManifest(axml);
+    const soBytes = await apk.entryMap.get('lib/arm64-v8a/libnative-vault.so').extract();
+    const parsedElf = globalThis.ArgonElfSecurity.parseElfBinary(soBytes, 'lib/arm64-v8a/libnative-vault.so');
+    const taintFlows = globalThis.ArgonAdvanced.runTaintAnalysis([dex]);
+    const deobfData = globalThis.ArgonAdvanced.analyzeObfuscationAndGenerateMappings(apk, [dex], [parsedElf]);
+    const cryptoHits = globalThis.ArgonAdvanced.scanCryptographicConstants(apk.entries, apk.rawBytes);
+    const audit = globalThis.ArgonElfSecurity.runStaticSecurityAudit(mfInfo, [dex], [parsedElf], apk.signingBlock, apk.certificates);
+
+    const mitre = globalThis.ArgonAdvanced.mapMitreAttackMobile(mfInfo, [dex], [parsedElf], taintFlows, deobfData);
+    assert(mitre.techniques.length >= 4, `Expected >=4 MITRE techniques, got ${mitre.techniques.length}`);
+    assert(mitre.techniques.some(t => t.id === 'T1575'), 'Expected T1575 Native Code Execution');
+
+    const sbom = globalThis.ArgonAdvanced.generateCycloneDxSbom(apk, mfInfo, [dex], [parsedElf], cryptoHits);
+    assert.strictEqual(sbom.bomFormat, 'CycloneDX');
+    assert.strictEqual(sbom.specVersion, '1.5');
+    assert(sbom.components.length >= 3, 'Expected SBOM components (app + packages + native)');
+
+    const sarif = globalThis.ArgonAdvanced.generateSarifReport(apk, audit, taintFlows);
+    assert.strictEqual(sarif.version, '2.1.0');
+    assert(sarif.runs[0].results.length >= audit.findings.length, 'Expected SARIF results for all audit findings');
+  });
+
+  await test('22. JNI RegisterNatives Dynamic Binding Scanner & Multi-ABI (ARM32 / x86_64 / ARM64) Disassembler', async () => {
+    const soBytes = await apk.entryMap.get('lib/arm64-v8a/libnative-vault.so').extract();
+    const parsedElf = globalThis.ArgonElfSecurity.parseElfBinary(soBytes, 'lib/arm64-v8a/libnative-vault.so');
+
+    // Synthesize a RegisterNatives JNINativeMethod string buffer appended inside ELF bytes for detection test
+    const regStr = new TextEncoder().encode('JNI_OnLoad\0RegisterNatives\0verifySignatureNative\0(Ljava/lang/String;)Z\0');
+    const extSo = new Uint8Array(soBytes.length + regStr.length);
+    extSo.set(soBytes, 0);
+    extSo.set(regStr, soBytes.length);
+
+    const regRes = globalThis.ArgonAdvanced.scanDynamicRegisterNatives(extSo, parsedElf, [dex]);
+    assert(regRes.hasJniOnLoad && regRes.usesRegisterNatives, 'Expected JNI_OnLoad and RegisterNatives detection');
+    assert(regRes.bindings.some(b => b.signature === '(Ljava/lang/String;)Z'), 'Expected JNINativeMethod signature extraction');
+
+    const arm64Dis = globalThis.ArgonAdvanced.disassembleMultiArchElf(soBytes, parsedElf, 'ARM64');
+    assert(arm64Dis.length > 0, 'Expected ARM64 disassembly output');
+
+    // Craft minimal .text slice with ARM32 BX LR (0xe12fff1e) & NOP (0xe1a00000) and x86_64 prologue + ret
+    const fakeArm32Bytes = new Uint8Array([0x00, 0x00, 0xa0, 0xe1, 0x1e, 0xff, 0x2f, 0xe1]);
+    const fakeMeta32 = { architecture: 'ARM32', exportedSymbols: [], sections: [{ name: '.text', offset: 0, addr: 0x1000, size: 8 }] };
+    const arm32Dis = globalThis.ArgonAdvanced.disassembleMultiArchElf(fakeArm32Bytes, fakeMeta32, 'ARM32');
+    assert.strictEqual(arm32Dis[0].mnemonic, 'nop');
+    assert.strictEqual(arm32Dis[1].mnemonic, 'bx');
+    assert.strictEqual(arm32Dis[1].operands, 'lr');
+
+    const fakeX64Bytes = new Uint8Array([0x55, 0x48, 0x89, 0xe5, 0xc3]);
+    const fakeMeta64 = { architecture: 'x86_64', exportedSymbols: [], sections: [{ name: '.text', offset: 0, addr: 0x2000, size: 5 }] };
+    const x64Dis = globalThis.ArgonAdvanced.disassembleMultiArchElf(fakeX64Bytes, fakeMeta64, 'X86_64');
+    assert.strictEqual(x64Dis[0].mnemonic, 'push');
+    assert.strictEqual(x64Dis[1].mnemonic, 'mov');
+    assert.strictEqual(x64Dis[2].mnemonic, 'ret');
+  });
+
+  await test('23. Inline Blob Web Worker Helper & Main Controller Safe Fallback', async () => {
+    require('../js/app.js');
+    assert(globalThis.ArgonApp && typeof globalThis.ArgonApp.createInlineAnalysisWorker === 'function', 'Expected ArgonApp.createInlineAnalysisWorker export');
+    assert(typeof globalThis.ArgonApp.applyLiveBytecodePatch === 'function', 'Expected ArgonApp.applyLiveBytecodePatch export');
+    // In Node environment without window.Worker, createInlineAnalysisWorker cleanly returns null (safe fallback)
+    const workerHandle = globalThis.ArgonApp.createInlineAnalysisWorker();
+    assert.strictEqual(workerHandle, null);
+  });
+
   console.log('====================================================================');
   console.log(` Results: ${passed} passed, ${failed} failed`);
   console.log('====================================================================');

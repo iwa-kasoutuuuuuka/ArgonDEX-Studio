@@ -103,8 +103,9 @@ function safeWriteFile(baseDir, relativeFile, content) {
     if (entry.name.endsWith('.so')) {
       const soBytes = await entry.extract();
       const parsedElf = globalThis.ArgonElfSecurity.parseElfBinary(soBytes, entry.name);
-      parsedElf.disassembly = globalThis.ArgonAdvanced.disassembleElfTextSection(soBytes, parsedElf);
+      parsedElf.disassembly = globalThis.ArgonAdvanced.disassembleMultiArchElf(soBytes, parsedElf);
       parsedElf.pseudoC = globalThis.ArgonAdvanced.decompileArm64ToPseudoC(soBytes, parsedElf);
+      parsedElf.registerNatives = globalThis.ArgonAdvanced.scanDynamicRegisterNatives(soBytes, parsedElf, dexFiles);
       const baseSo = entry.name.split('/').pop().replace(/[^A-Za-z0-9_.-]/g, '_');
       safeWriteFile(outDir, path.join('native_pseudo_c', baseSo + '.c'), parsedElf.pseudoC);
       elfFiles.push(parsedElf);
@@ -132,6 +133,18 @@ function safeWriteFile(baseDir, relativeFile, content) {
   const audit = globalThis.ArgonElfSecurity.runStaticSecurityAudit(
     manifestInfo, dexFiles, elfFiles, apk.signingBlock, apk.certificates
   );
+  const mitreAttack = globalThis.ArgonAdvanced.mapMitreAttackMobile(
+    manifestInfo, dexFiles, elfFiles, taintFlows, deobfData
+  );
+  const sbom = globalThis.ArgonAdvanced.generateCycloneDxSbom(
+    apk, manifestInfo, dexFiles, elfFiles, cryptoConstants
+  );
+  const sarif = globalThis.ArgonAdvanced.generateSarifReport(
+    apk, audit, taintFlows
+  );
+
+  safeWriteFile(outDir, 'sarif_report.sarif.json', JSON.stringify(sarif, null, 2));
+  safeWriteFile(outDir, 'sbom_cyclonedx.json', JSON.stringify(sbom, null, 2));
 
   if (arsc) {
     safeWriteFile(outDir, 'resources_table.json', JSON.stringify(arsc.entries, null, 2));
@@ -147,6 +160,7 @@ function safeWriteFile(baseDir, relativeFile, content) {
     manifest: manifestInfo,
     classes: classSummaries,
     taintFlows,
+    mitreAttack,
     deobfuscation: {
       obfuscationRatio: deobfData.obfuscationRatio,
       renames: deobfData.renameReasons,
@@ -159,6 +173,7 @@ function safeWriteFile(baseDir, relativeFile, content) {
       architecture: e.architecture,
       hardening: e.hardening,
       jniMethods: e.jniMethods,
+      registerNatives: e.registerNatives,
       disassemblyCount: (e.disassembly || []).length,
       disassembly: e.disassembly,
       pseudoC: e.pseudoC

@@ -1286,6 +1286,12 @@
       dv.setUint32(base + 28, 0, true); // static_values_off
     }
 
+    // Compute SHA-1 signature (bytes 32..end -> offset 12..31) BEFORE Adler32 checksum (bytes 12..end -> offset 8..11)
+    if (typeof global.ArgonZip.pureJsSha1Bytes === 'function') {
+      const sha1 = global.ArgonZip.pureJsSha1Bytes(fullBytes, 32, fullBytes.length);
+      fullBytes.set(sha1, 12);
+    }
+
     // Compute Adler32 checksum over bytes 12..end
     const checksum = global.ArgonZip.adler32(fullBytes, 12, fullBytes.length);
     dv.setUint32(8, checksum, true);

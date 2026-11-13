@@ -1,8 +1,8 @@
 {
   "fileName": "ArgonVault_v2.4.1_sample.apk",
   "fileSize": 12700,
-  "sha256": "eb7fb9cdeabbf0a8c05147d5762de130e06e4368e8685f992c8cd52988c50c56",
-  "entropy": 4.199,
+  "sha256": "75177ae275951fc37382db964bff6d4f4233810ffbc89d86378df884fea8f921",
+  "entropy": 4.218,
   "signingBlock": {
     "present": true,
     "blockStart": 12091,
@@ -251,6 +251,73 @@
       ]
     }
   ],
+  "mitreAttack": {
+    "techniques": [
+      {
+        "id": "T1437.001",
+        "tactic": "Command and Control",
+        "name": "Application Layer Protocol: Web Protocols",
+        "severity": "HIGH",
+        "evidence": "Cleartext HTTP / raw network endpoints present in DEX string pool.",
+        "targetClass": null
+      },
+      {
+        "id": "T1407",
+        "tactic": "Execution",
+        "name": "Download / Execute Untrusted Input at Runtime",
+        "severity": "CRITICAL",
+        "evidence": "SQL Injection (CWE-89) (Method Parameter arg1 (VaultDatabase.queryVaultSecret) -> SQLite rawQuery() Sink (SQLiteDatabase.rawQuery))",
+        "targetClass": "com.argon.vault.db.VaultDatabase"
+      },
+      {
+        "id": "T1409",
+        "tactic": "Collection",
+        "name": "Stored Application Data",
+        "severity": "MEDIUM",
+        "evidence": "Local SharedPreferences / SQLite persistent storage operations detected.",
+        "targetClass": null
+      },
+      {
+        "id": "T1406",
+        "tactic": "Defense Evasion",
+        "name": "Obfuscated Files or Information",
+        "severity": "HIGH",
+        "evidence": "Recovered 1 encrypted strings and/or native anti-debug hooks.",
+        "targetClass": null
+      },
+      {
+        "id": "T1575",
+        "tactic": "Execution",
+        "name": "Native Code Execution via JNI",
+        "severity": "INFO",
+        "evidence": "1 native ELF shared libraries loaded via JNI.",
+        "targetClass": null
+      },
+      {
+        "id": "T1636",
+        "tactic": "Collection",
+        "name": "Protected User Data Access",
+        "severity": "HIGH",
+        "evidence": "Manifest declares sensitive permissions: android.permission.INTERNET, android.permission.CAMERA",
+        "targetClass": null
+      },
+      {
+        "id": "T1623",
+        "tactic": "Discovery",
+        "name": "Command and Scripting / Debuggable Flag Enabled",
+        "severity": "HIGH",
+        "evidence": "android:debuggable=\"true\" exposes JDWP & runtime inspection.",
+        "targetClass": null
+      }
+    ],
+    "tacticCoverage": {
+      "Command and Control": 1,
+      "Execution": 2,
+      "Collection": 2,
+      "Defense Evasion": 1,
+      "Discovery": 1
+    }
+  },
   "deobfuscation": {
     "obfuscationRatio": 22,
     "renames": [
@@ -373,6 +440,11 @@
           "library": "lib/arm64-v8a/libnative-vault.so"
         }
       ],
+      "registerNatives": {
+        "hasJniOnLoad": true,
+        "usesRegisterNatives": false,
+        "bindings": []
+      },
       "disassemblyCount": 25,
       "disassembly": [
         {
