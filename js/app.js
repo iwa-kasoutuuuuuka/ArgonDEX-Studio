@@ -25,6 +25,9 @@
     diffSelectedClassIdx: 0,
     elfArchOverride: 'AUTO',
     workerInfo: { mode: 'sync', durationMs: 0 },
+    theme: 'dark',
+    codeRenderLimit: 800,
+    bgXrefToken: 0,
     allCrossRefs: [],
 
     // UI state
@@ -155,10 +158,11 @@
       .replace(/(\/?&gt;)/g, '<span class="tok-kw">$1</span>');
   }
 
-  function renderCodeLinesHtml(text, lang = 'java') {
-    const lines = text.split('\n');
+  function renderCodeLinesHtml(text, lang = 'java', maxLines = State.codeRenderLimit || 800) {
+    const lines = String(text || '').split('\n');
+    const renderCount = Math.min(lines.length, maxLines);
     const html = [];
-    for (let i = 0; i < lines.length; i++) {
+    for (let i = 0; i < renderCount; i++) {
       const highlighted = lang === 'java'
         ? highlightJavaLine(lines[i])
         : (lang === 'smali' ? highlightSmaliLine(lines[i]) : highlightXmlLine(lines[i]));
@@ -166,6 +170,13 @@
         `<div class="code-line" data-line="${i + 1}">` +
           `<span class="line-num">${i + 1}</span>` +
           `<span class="line-content">${highlighted}</span>` +
+        `</div>`
+      );
+    }
+    if (lines.length > renderCount) {
+      html.push(
+        `<div class="code-chunk-banner" data-action="expand-code-lines">` +
+          `⚡ Fast Chunk Mode: showing ${renderCount} / ${lines.length} lines — Click to load all lines` +
         `</div>`
       );
     }
@@ -224,7 +235,36 @@
             entropy -= p * Math.log2(p);
           }
         }
-        self.postMessage({ ok: true, entropy: Math.round(entropy * 1000) / 1000, scannedBytes: bytes.length });
+        const sigs = [
+          { name: 'AES Rijndael Forward S-Box (256-byte lookup table)', algo: 'AES-128/192/256', pattern: [0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76] },
+          { name: 'SHA-256 / SHA-224 Initial Hash Vector H0 (0x6a09e667)', algo: 'SHA-256', pattern: [0x67, 0xe6, 0x09, 0x6a, 0x85, 0xae, 0x67, 0xbb] },
+          { name: 'ChaCha20 / Salsa20 Sigma Constant ("expand 32-byte k")', algo: 'ChaCha20 Stream Cipher', pattern: [0x65, 0x78, 0x70, 0x61, 0x6e, 0x64, 0x20, 0x33, 0x32, 0x2d, 0x62, 0x79, 0x74, 0x65, 0x20, 0x6b] }
+        ];
+        const cryptoHits = [];
+        for (const sig of sigs) {
+          const pat = sig.pattern;
+          const maxStart = bytes.length - pat.length;
+          let pos = 0;
+          while (pos <= maxStart) {
+            pos = bytes.indexOf(pat[0], pos);
+            if (pos === -1 || pos > maxStart) break;
+            let ok = true;
+            for (let k = 1; k < pat.length; k++) {
+              if (bytes[pos + k] !== pat[k]) { ok = false; break; }
+            }
+            if (ok) {
+              cryptoHits.push({
+                algorithm: sig.algo,
+                description: sig.name,
+                archiveOffset: '0x' + pos.toString(16).padStart(8, '0'),
+                previewHex: pat.slice(0, 8).map(b => b.toString(16).padStart(2, '0')).join(' ') + ' ...'
+              });
+              break;
+            }
+            pos++;
+          }
+        }
+        self.postMessage({ ok: true, entropy: Math.round(entropy * 1000) / 1000, scannedBytes: bytes.length, cryptoHits });
       };
     `;
     try {
@@ -266,6 +306,7 @@
         resolve({
           mode: 'inline-blob-worker',
           entropy: data.entropy || 0,
+          cryptoHits: Array.isArray(data.cryptoHits) ? data.cryptoHits : null,
           durationMs: Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - tStart)
         });
       };
@@ -343,14 +384,28 @@
       }
     }
 
-    // Pre-decompile up to 250 classes eagerly for cross-references; larger Multi-DEX APKs decompile lazily on demand
-    const eagerLimit = Math.min(allClasses.length, 250);
-    for (let idx = 0; idx < eagerLimit; idx++) {
-      if (idx > 0 && idx % 60 === 0) await yieldToUi();
-      const dec = global.ArgonDex.decompileClassToJava(allClasses[idx], arsc);
-      for (const xref of dec.crossRefs) {
-        allCrossRefs.push(xref);
-      }
+    // Defer cross-reference pre-decompilation to idle background batches so initial render is instant
+    function scheduleBackgroundCrossRefBuild(classesList, resTable, targetList, token) {
+      const limit = Math.min(classesList.length, 250);
+      let idx = 0;
+      const runBatch = () => {
+        if (State.bgXrefToken !== token) return;
+        const end = Math.min(limit, idx + 40);
+        for (; idx < end; idx++) {
+          const dec = global.ArgonDex.decompileClassToJava(classesList[idx], resTable);
+          for (const xref of dec.crossRefs) {
+            targetList.push(xref);
+          }
+        }
+        if (idx < limit) {
+          if (typeof requestIdleCallback === 'function') {
+            requestIdleCallback(runBatch, { timeout: 150 });
+          } else {
+            setTimeout(runBatch, 0);
+          }
+        }
+      };
+      if (limit > 0) setTimeout(runBatch, 0);
     }
 
     // 4. Parse all native ELF (.so) libraries + Multi-ABI Disassembly + RegisterNatives + Pseudo-C
@@ -406,9 +461,10 @@
     const deobfData = global.ArgonAdvanced
       ? global.ArgonAdvanced.analyzeObfuscationAndGenerateMappings(apk, dexFiles, elfFiles)
       : null;
-    const cryptoConstants = global.ArgonAdvanced
-      ? global.ArgonAdvanced.scanCryptographicConstants(apk.entries, apk.rawBytes)
-      : [];
+    const workerInfo = await runOffloadedWorkerTelemetry(apk.rawBytes);
+    const cryptoConstants = (workerInfo && Array.isArray(workerInfo.cryptoHits))
+      ? workerInfo.cryptoHits
+      : (global.ArgonAdvanced ? global.ArgonAdvanced.scanCryptographicConstants(apk.entries, apk.rawBytes) : []);
     const fridaScript = global.ArgonAdvanced
       ? global.ArgonAdvanced.generateFridaHookScript(apk, manifestInfo, dexFiles, elfFiles, taintFlows, deobfData)
       : '';
@@ -421,8 +477,6 @@
     const sarif = global.ArgonAdvanced
       ? global.ArgonAdvanced.generateSarifReport(apk, securityAudit, taintFlows)
       : null;
-
-    const workerInfo = await runOffloadedWorkerTelemetry(apk.rawBytes);
 
     // Update global state
     State.apk = apk;
@@ -449,6 +503,8 @@
     State.elfArchOverride = 'AUTO';
     State.workerInfo = workerInfo;
     State.sidebarRenderLimit = 300;
+    State.codeRenderLimit = 800;
+    State.bgXrefToken = (State.bgXrefToken || 0) + 1;
     if (State.smartDeobfEnabled === undefined) State.smartDeobfEnabled = true;
     State.allCrossRefs = allCrossRefs;
 
@@ -468,6 +524,7 @@
     );
 
     renderAll();
+    scheduleBackgroundCrossRefBuild(allClasses, arsc, allCrossRefs, State.bgXrefToken);
   }
 
   function setStatus(msg) {
@@ -2391,8 +2448,10 @@
     if (!listEl || !State.apk) return;
     const q = query.trim().toLowerCase();
     const hits = [];
+    const MAX_HITS = 80;
 
-    // 1. Search classes & methods
+    // 1. Search classes & methods (with early exit at MAX_HITS for large multi-DEX APKs)
+    outerLoop:
     for (const cls of State.allClasses) {
       if (!q || cls.fullName.toLowerCase().includes(q)) {
         hits.push({
@@ -2402,6 +2461,7 @@
           sub: `${cls.dexName} (${cls.allMethods.length} methods)`,
           className: cls.fullName
         });
+        if (hits.length >= MAX_HITS) break outerLoop;
       }
       for (const m of cls.allMethods) {
         const fullSig = `${cls.fullName}.${m.name}`;
@@ -2413,6 +2473,7 @@
             sub: cls.fullName,
             className: cls.fullName
           });
+          if (hits.length >= MAX_HITS) break outerLoop;
         }
         // Search inside method string constants
         if (q && m.code) {
@@ -2425,6 +2486,7 @@
                 sub: `Used in ${cls.fullName}.${m.name}()`,
                 className: cls.fullName
               });
+              if (hits.length >= MAX_HITS) break outerLoop;
               break;
             }
           }
@@ -2582,6 +2644,7 @@
     if (target) {
       State.selectedClass = target;
       State.selectedMethodIdx = 0;
+      State.codeRenderLimit = 800;
       State.activeMode = 'code';
       closeGlobalSearchModal();
       renderAll();
@@ -2590,7 +2653,29 @@
     }
   }
 
+  function applyTheme(theme) {
+    const next = theme === 'light' ? 'light' : 'dark';
+    State.theme = next;
+    if (typeof document !== 'undefined') {
+      document.documentElement.dataset.theme = next;
+      const btn = document.getElementById('btn-theme-toggle');
+      if (btn) btn.textContent = next === 'light' ? '🌙 Dark' : '☀️ Light';
+    }
+    try {
+      if (typeof localStorage !== 'undefined') localStorage.setItem('argondex_theme', next);
+    } catch (_) {}
+  }
+
   function initApp() {
+    let savedTheme = 'dark';
+    try {
+      if (typeof localStorage !== 'undefined') savedTheme = localStorage.getItem('argondex_theme') || 'dark';
+    } catch (_) {}
+    applyTheme(savedTheme);
+
+    document.getElementById('btn-theme-toggle')?.addEventListener('click', () => {
+      applyTheme(State.theme === 'light' ? 'dark' : 'light');
+    });
     // Top bar buttons
     const fileInput = document.getElementById('apk-file-input');
     document.getElementById('btn-open-apk')?.addEventListener('click', () => fileInput?.click());
@@ -2692,6 +2777,9 @@
         } else if (act === 'load-more-classes') {
           State.sidebarRenderLimit = (State.sidebarRenderLimit || 300) + 500;
           renderLeftSidebar();
+        } else if (act === 'expand-code-lines') {
+          State.codeRenderLimit = Number.MAX_SAFE_INTEGER;
+          renderCenterWorkbench();
         } else if (act === 'select-file') {
           const fname = actionEl.dataset.filename;
           if (fname.endsWith('.xml')) {
@@ -2733,8 +2821,11 @@
     searchModal?.addEventListener('click', (e) => {
       if (e.target === searchModal) closeGlobalSearchModal();
     });
+    let searchDebounceTimer = null;
     searchInput?.addEventListener('input', (e) => {
-      renderGlobalSearchResults(e.target.value);
+      const val = e.target.value;
+      if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+      searchDebounceTimer = setTimeout(() => renderGlobalSearchResults(val), 90);
     });
 
     // Keyboard shortcuts (Ctrl+K / Escape)
@@ -2776,6 +2867,8 @@
     highlightJavaLine,
     highlightSmaliLine,
     highlightXmlLine,
+    renderCodeLinesHtml,
+    applyTheme,
     createInlineAnalysisWorker,
     applyLiveBytecodePatch
   };

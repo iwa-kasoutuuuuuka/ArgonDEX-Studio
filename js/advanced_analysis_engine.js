@@ -1218,10 +1218,15 @@
 
     for (const sig of SIGNATURES) {
       const pat = sig.pattern;
-      for (let i = 0; i <= rawApkBytes.length - pat.length; i++) {
+      const firstByte = pat[0];
+      const maxStart = rawApkBytes.length - pat.length;
+      let pos = 0;
+      while (pos <= maxStart) {
+        pos = rawApkBytes.indexOf(firstByte, pos);
+        if (pos === -1 || pos > maxStart) break;
         let match = true;
-        for (let k = 0; k < pat.length; k++) {
-          if (rawApkBytes[i + k] !== pat[k]) {
+        for (let k = 1; k < pat.length; k++) {
+          if (rawApkBytes[pos + k] !== pat[k]) {
             match = false;
             break;
           }
@@ -1230,11 +1235,12 @@
           hits.push({
             algorithm: sig.algo,
             description: sig.name,
-            archiveOffset: '0x' + i.toString(16).padStart(8, '0'),
+            archiveOffset: '0x' + pos.toString(16).padStart(8, '0'),
             previewHex: pat.slice(0, 8).map(b => b.toString(16).padStart(2, '0')).join(' ') + ' ...'
           });
           break;
         }
+        pos++;
       }
     }
 

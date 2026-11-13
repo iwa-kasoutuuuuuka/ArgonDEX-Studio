@@ -26,10 +26,17 @@
 
   function adler32(bytes, start = 0, end = bytes.length) {
     const MOD_ADLER = 65521;
+    const NMAX = 5552;
     let a = 1, b = 0;
-    for (let i = start; i < end; i++) {
-      a = (a + bytes[i]) % MOD_ADLER;
-      b = (b + a) % MOD_ADLER;
+    let i = start;
+    while (i < end) {
+      const blockEnd = Math.min(end, i + NMAX);
+      for (; i < blockEnd; i++) {
+        a += bytes[i];
+        b += a;
+      }
+      a %= MOD_ADLER;
+      b %= MOD_ADLER;
     }
     return ((b << 16) | a) >>> 0;
   }

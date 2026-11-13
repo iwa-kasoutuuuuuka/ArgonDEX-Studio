@@ -371,6 +371,37 @@ async function test(name, fn) {
     assert.strictEqual(workerHandle, null);
   });
 
+  await test('24. Performance Optimizations (NMAX Adler-32, indexOf Crypto Scan, Chunked Code Render) & Theme Toggle', async () => {
+    // 1. Verify NMAX=5552 Adler-32 matches naive byte-by-byte modulo over 20KB buffer
+    const bigBuf = new Uint8Array(20000);
+    for (let i = 0; i < bigBuf.length; i++) bigBuf[i] = (i * 131 + 17) & 0xff;
+    let ra = 1, rb = 0;
+    for (let i = 0; i < bigBuf.length; i++) {
+      ra = (ra + bigBuf[i]) % 65521;
+      rb = (rb + ra) % 65521;
+    }
+    const expectedAdler = ((rb << 16) | ra) >>> 0;
+    assert.strictEqual(globalThis.ArgonZip.adler32(bigBuf), expectedAdler, 'Expected NMAX Adler-32 to match reference');
+
+    // 2. Verify indexOf crypto scanner finds signature placed past 1MB offset
+    const largeScanBuf = new Uint8Array(1024 * 1024 + 32);
+    largeScanBuf.set([0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76], 1024 * 1024);
+    const hits = globalThis.ArgonAdvanced.scanCryptographicConstants([], largeScanBuf);
+    assert(hits.some(h => h.algorithm.includes('AES')), 'Expected indexOf crypto scanner to find AES S-Box at 1MB+');
+
+    // 3. Verify chunked code renderer caps initial lines and emits expand banner
+    const longJava = Array.from({ length: 1200 }, (_, i) => `int x${i} = ${i};`).join('\n');
+    const chunkHtml = globalThis.ArgonApp.renderCodeLinesHtml(longJava, 'java', 800);
+    assert(chunkHtml.includes('data-action="expand-code-lines"'), 'Expected expand-code-lines banner for >800 lines');
+    assert(!chunkHtml.includes('x1199'), 'Expected lines beyond chunk limit not to be eagerly rendered');
+
+    // 4. Verify Dark / Light theme state toggle
+    globalThis.ArgonApp.applyTheme('light');
+    assert.strictEqual(globalThis.ArgonApp.State.theme, 'light');
+    globalThis.ArgonApp.applyTheme('dark');
+    assert.strictEqual(globalThis.ArgonApp.State.theme, 'dark');
+  });
+
   console.log('====================================================================');
   console.log(` Results: ${passed} passed, ${failed} failed`);
   console.log('====================================================================');
